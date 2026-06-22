@@ -6,9 +6,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 type GpuState = 'off' | 'starting' | 'downloading' | 'loading' | 'ready' | 'stopping' | 'error';
 type Quality  = 'Fast' | 'Balanced' | 'High Similarity';
 type Style    = 'Natural' | 'Deep Reflective' | 'Warm Storyteller' | 'Soft Intimate' | 'Documentary';
+type Speed    = 'Normal' | 'Slower' | 'Slowest';
 
 const QUALITY_OPTIONS: Quality[] = ['Fast', 'Balanced', 'High Similarity'];
 const STYLE_OPTIONS: Style[]     = ['Natural', 'Warm Storyteller', 'Deep Reflective', 'Soft Intimate', 'Documentary'];
+const SPEED_OPTIONS: Speed[]     = ['Normal', 'Slower', 'Slowest'];
 
 const GPU_COST_HR = 0.77; // RTX 6000 Ada — update if using different GPU
 
@@ -139,6 +141,7 @@ export default function Home() {
   const [quality, setQuality]     = useState<Quality>('Balanced');
   const [style, setStyle]         = useState<Style>('Natural');
   const [customStyle, setCustomStyle] = useState('');
+  const [speed, setSpeed]         = useState<Speed>('Normal');
 
   // Output
   const [generating, setGenerating] = useState(false);
@@ -151,7 +154,7 @@ export default function Home() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const r = await fetch(`/api/health?podUrl=${encodeURIComponent(url)}`, { cache: 'no-store' });
+        const r = await fetch(`/voiceclone/api/health?podUrl=${encodeURIComponent(url)}`, { cache: 'no-store' });
         if (!r.ok) return;
         const d = await r.json();
         if (d.status === 'downloading') {
@@ -184,7 +187,7 @@ export default function Home() {
     setPodUrl('');
     setCurrentPodId('');
     try {
-      const r = await fetch('/api/pod', {
+      const r = await fetch('/voiceclone/api/pod', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create' }),
@@ -212,13 +215,11 @@ export default function Home() {
     clearInterval(pollRef.current!);
     clearInterval(uptimeRef.current!);
     try {
-      if (currentPodId) {
-        await fetch('/api/pod', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'terminate', podId: currentPodId }),
-        });
-      }
+      await fetch('/voiceclone/api/pod', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'terminate' }),
+      });
     } finally {
       setGpuState('off');
       setGpuDetail('');
@@ -241,9 +242,10 @@ export default function Home() {
     fd.append('quality', quality);
     fd.append('style', style);
     fd.append('custom_style', customStyle);
+    fd.append('speed', speed);
 
     try {
-      const r = await fetch(`/api/health?endpoint=generate&podUrl=${encodeURIComponent(podUrl)}`, {
+      const r = await fetch(`/voiceclone/api/health?endpoint=generate&podUrl=${encodeURIComponent(podUrl)}`, {
         method: 'POST',
         body: fd,
       });
@@ -263,11 +265,27 @@ export default function Home() {
     }
   };
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
-  useEffect(() => () => {
-    clearInterval(pollRef.current!);
-    clearInterval(uptimeRef.current!);
-  }, []);
+  // ── On mount: check if a pod is already running (survives refresh) ──────
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/voiceclone/api/pod', { cache: 'no-store' });
+        const d = await r.json();
+        if (d.running) {
+          console.log('[Init] Found existing pod:', d.podId);
+          setPodUrl(d.podUrl);
+          setCurrentPodId(d.podId);
+          setGpuState('starting');
+          setGpuDetail(`Reconnected to pod (${d.gpuType}) — checking status…`);
+          startHealthPoll(d.podUrl);
+        }
+      } catch { /* no existing pod */ }
+    })();
+    return () => {
+      clearInterval(pollRef.current!);
+      clearInterval(uptimeRef.current!);
+    };
+  }, [startHealthPoll]);
 
   const isReady    = gpuState === 'ready';
   const canGenerate = isReady && !!text.trim() && !!refAudio && !generating;
@@ -388,6 +406,22 @@ export default function Home() {
               disabled={!isReady}
             >
               {STYLE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Speed */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider block mb-2"
+              style={{ color: 'rgba(241,240,255,0.4)' }}>
+              Speaking Speed
+            </label>
+            <select
+              className="style-select"
+              value={speed}
+              onChange={e => setSpeed(e.target.value as Speed)}
+              disabled={!isReady}
+            >
+              {SPEED_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
