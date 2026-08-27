@@ -145,6 +145,7 @@ export default function Home() {
 
   // Output
   const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null);
   const [audioUrl, setAudioUrl]     = useState<string | null>(null);
   const [genError, setGenError]     = useState('');
   const [history, setHistory]       = useState<{ url: string; label: string }[]>([]);
@@ -229,11 +230,12 @@ export default function Home() {
     }
   };
 
-  // ── Generate Voice ────────────────────────────────────────────────────────
+  // ── Generate Voice (polling — survives Cloudflare 100s timeout) ──────────
   const generate = async () => {
     if (!text.trim() || !refAudio) return;
     setGenerating(true);
     setGenError('');
+    setGenProgress(null);
     setAudioUrl(null);
 
     const fd = new FormData();
@@ -245,23 +247,83 @@ export default function Home() {
     fd.append('speed', speed);
 
     try {
-      const r = await fetch(`/voiceclone/api/health?endpoint=generate&podUrl=${encodeURIComponent(podUrl)}`, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!r.ok) {
-        const e = await r.json();
-        throw new Error(e.error || `HTTP ${r.status}`);
+      // Step 1: Start generation — returns {job_id} immediately
+      const startRes = await fetch(
+        `/voiceclone/api/health?endpoint=generate&podUrl=${encodeURIComponent(podUrl)}`,
+        { method: 'POST', body: fd }
+      );
+      if (!startRes.ok) {
+        const e = await startRes.json().catch(() => ({}));
+        throw new Error(e.error || `HTTP ${startRes.status}`);
       }
-      const blob = await r.blob();
-      const url  = URL.createObjectURL(blob);
-      setAudioUrl(url);
-      const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
-      setHistory(h => [{ url, label }, ...h].slice(0, 5));
+
+      // Check if legacy response (direct audio) or new job system
+      const ct = startRes.headers.get('content-type') || '';
+      if (ct.startsWith('audio/')) {
+        // Legacy: direct audio response (short text)
+        const blob = await startRes.blob();
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
+        setHistory(h => [{ url, label }, ...h].slice(0, 5));
+        return;
+      }
+
+      const { job_id } = await startRes.json();
+      if (!job_id) throw new Error('No job_id returned from pod');
+
+      // Step 2: Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(
+            `/voiceclone/api/health?endpoint=status&podUrl=${encodeURIComponent(podUrl)}&jobId=${job_id}`,
+            { cache: 'no-store' }
+          );
+          if (!statusRes.ok) return;
+          const s = await statusRes.json();
+
+          if (s.progress) {
+            setGenProgress({ done: s.progress.done, total: s.progress.total });
+          }
+
+          if (s.status === 'done') {
+            clearInterval(pollInterval);
+            // Step 3: Fetch result
+            const resultRes = await fetch(
+              `/voiceclone/api/health?endpoint=result&podUrl=${encodeURIComponent(podUrl)}&jobId=${job_id}`,
+              { cache: 'no-store' }
+            );
+            if (!resultRes.ok) throw new Error('Failed to fetch result');
+            const blob = await resultRes.blob();
+            const url = URL.createObjectURL(blob);
+            setAudioUrl(url);
+            const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
+            setHistory(h => [{ url, label }, ...h].slice(0, 5));
+            setGenerating(false);
+            setGenProgress(null);
+          } else if (s.status === 'error') {
+            clearInterval(pollInterval);
+            throw new Error(s.error || 'Generation failed');
+          }
+        } catch (e) {
+          clearInterval(pollInterval);
+          setGenError(e instanceof Error ? e.message : 'Generation failed');
+          setGenerating(false);
+          setGenProgress(null);
+        }
+      }, 2000);
+
+      // Safety timeout: stop polling after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setGenerating(false);
+        setGenProgress(null);
+      }, 300000);
+
     } catch (e: unknown) {
       setGenError(e instanceof Error ? e.message : 'Generation failed');
-    } finally {
       setGenerating(false);
+      setGenProgress(null);
     }
   };
 
@@ -513,7 +575,9 @@ export default function Home() {
           {generating ? (
             <span className="flex items-center gap-3">
               <Waveform />
-              Generating cloned voice…
+              {genProgress
+                ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
+                : 'Generating cloned voice…'}
             </span>
           ) : (
             <span className="flex items-center gap-2">
