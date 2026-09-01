@@ -144,12 +144,27 @@ async function terminatePod(podId: string) {
   return data;
 }
 
-// GET /api/pod — check if a pod is already running (survives page refresh)
+// GET /api/pod — check if a pod is actually running on RunPod (survives page refresh)
 export async function GET() {
   const state = readState();
-  if (!state) {
+  if (!state?.podId) {
     return NextResponse.json({ running: false });
   }
+
+  // Validate that the pod is actually active on RunPod
+  try {
+    const data = await gql(`{ pod(input: { podId: "${state.podId}" }) { id desiredStatus } }`);
+    const pod = data?.data?.pod;
+    if (!pod?.id || pod.desiredStatus !== 'RUNNING') {
+      console.log('[RunPod] Pod is no longer active on RunPod:', state.podId);
+      clearState();
+      return NextResponse.json({ running: false });
+    }
+  } catch {
+    clearState();
+    return NextResponse.json({ running: false });
+  }
+
   return NextResponse.json({ running: true, ...state });
 }
 
