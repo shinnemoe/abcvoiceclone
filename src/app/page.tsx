@@ -531,14 +531,28 @@ export default function Home() {
             disabled={!isReady}
           />
 
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: 'rgba(241,240,255,0.3)' }}>
-              {text.length} characters
-            </span>
-            {!isReady && (
-              <span className="text-xs" style={{ color: 'rgba(241,240,255,0.3)' }}>
-                Start GPU to enable editing
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium" style={{ 
+                color: text.length > 5000 ? '#f59e0b' : text.length > 0 ? 'rgba(241,240,255,0.7)' : 'rgba(241,240,255,0.3)' 
+              }}>
+                📝 {text.length} characters
+                {text.length > 0 && (
+                  <span className="ml-2 font-normal" style={{ color: 'rgba(241,240,255,0.4)' }}>
+                    (approx. {Math.ceil(text.length / 250)} chunk{Math.ceil(text.length / 250) > 1 ? 's' : ''} · ~{Math.ceil(text.length / 15)}s audio)
+                  </span>
+                )}
               </span>
+              {!isReady && (
+                <span className="text-xs" style={{ color: 'rgba(241,240,255,0.3)' }}>
+                  Start GPU to enable editing
+                </span>
+              )}
+            </div>
+            {text.length > 5000 && (
+              <p className="text-xs px-3 py-1.5 rounded" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                ℹ️ Long script ({text.length} chars) — will be processed smoothly across {Math.ceil(text.length / 250)} chunks.
+              </p>
             )}
           </div>
 

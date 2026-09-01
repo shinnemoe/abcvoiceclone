@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync, readFileSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY!;
 const NETWORK_VOLUME_ID = process.env.RUNPOD_NETWORK_VOLUME_ID!;
 const IMAGE             = process.env.RUNPOD_IMAGE || 'ghcr.io/shinnemoe/voice-studio:latest';
 const GQL               = `https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}`;
-const POD_STATE_FILE    = join('/tmp', 'voiceclone-pod.json');
+const POD_STATE_FILE    = join(tmpdir(), 'voiceclone-pod.json');
 
 // ─── Pod state (server-side, survives page refresh) ──────────────────────────
 interface PodState {
@@ -60,7 +61,8 @@ async function getGpuTypesByPrice() {
   const unpriced: string[] = [];
 
   for (const g of data?.data?.gpuTypes || []) {
-    if (g.memoryInGb < 24) continue;
+    // VoxCPM2 runs great on >= 16GB VRAM (e.g. RTX A4000 $0.17/hr)
+    if (g.memoryInGb < 16) continue;
     // Skip GPUs that aren't available in any cloud type
     if (!g.secureCloud && !g.communityCloud) continue;
     // Skip Blackwell / RTX PRO — too new for PyTorch 2.5.1 (CUDA 12.1)
@@ -110,6 +112,7 @@ async function createPod() {
             gpuTypeId: "${escapedGpu}"
             name: "voice-studio-session"
             imageName: "${IMAGE}"
+            dockerArgs: "python backend/cloud_server.py"
             ports: "8000/http,22/tcp"
             ${volumePart}
             env: [{ key: "MODEL_PATH", value: "/models/VoxCPM2" }]
