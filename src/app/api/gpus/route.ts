@@ -15,7 +15,7 @@ export async function GET() {
           memoryInGb
           secureCloud
           communityCloud
-          lowestPrice { minimumBidPrice uninterruptablePrice }
+          lowestPrice(input: { gpuCount: 1 }) { minimumBidPrice uninterruptablePrice }
         }
       }`,
     }),
