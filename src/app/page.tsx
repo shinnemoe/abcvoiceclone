@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import ServerlessVoiceClone from './components/ServerlessVoiceClone';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type GpuState = 'off' | 'starting' | 'downloading' | 'loading' | 'ready' | 'stopping' | 'error';
@@ -208,9 +207,6 @@ export default function Home() {
     setPodUrl('');
     setCurrentPodId('');
   };
-
-  // Tabs
-  const [activeTab, setActiveTab]     = useState<'current' | 'serverless'>('current');
 
   // Form
   const [text, setText]           = useState('');
@@ -486,35 +482,7 @@ export default function Home() {
         </a>
       </header>
 
-      {/* ── Navigation Tabs ── */}
-      <div className="flex items-center gap-3 mb-6 p-1.5 rounded-xl bg-white/[0.03] border border-white/10 w-fit">
-        <button
-          onClick={() => setActiveTab('current')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-            activeTab === 'current'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-          }`}
-        >
-          <span>🎙️</span>
-          <span>Current Tool (Dedicated GPU)</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('serverless')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-            activeTab === 'serverless'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-          }`}
-        >
-          <span>⚡</span>
-          <span>Serverless Tool (Pay-per-Second)</span>
-        </button>
-      </div>
-
-      {activeTab === 'current' ? (
-        <>
-          {/* ── GPU Control Panel ── */}
+      {/* ── GPU Control Panel ── */}
       <section className="glass-card p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           {/* Status */}
@@ -917,10 +885,6 @@ export default function Home() {
             ))}
           </div>
         </section>
-      )}
-        </>
-      ) : (
-        <ServerlessVoiceClone />
       )}
 
       {/* ── Footer ── */}
