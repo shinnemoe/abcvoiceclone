@@ -21,7 +21,7 @@ const combineJobs = new Map<string, CombineState>();
 function combineWavBuffers(
   buffers: ArrayBuffer[],
   sampleRate: number,
-  silenceGapSec = 0.35
+  silenceGapSec = 0.3
 ): ArrayBuffer {
   // WAV is: 44-byte header + float32 PCM
   const silenceSamples = Math.floor(sampleRate * silenceGapSec);
