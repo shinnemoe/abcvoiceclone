@@ -336,3 +336,10 @@ select.style-select option {
   0%, 100% { transform: scaleY(0.4); opacity: 0.6; }
   50%       { transform: scaleY(1);   opacity: 1; }
 }
+
+/* Indeterminate progress bar — slides back and forth */
+@keyframes progress-slide {
+  0%   { margin-left: 0%;  width: 30%; }
+  50%  { margin-left: 50%; width: 40%; }
+  100% { margin-left: 0%;  width: 30%; }
+}

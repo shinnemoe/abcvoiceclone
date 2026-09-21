@@ -799,9 +799,11 @@ export default function Home() {
           {generating ? (
             <span className="flex items-center gap-3">
               <Waveform />
-              {genProgress
-                ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
-                : 'Generating cloned voice…'}
+              {genPhase === 'combining'
+                ? `🔄 Combining ${genProgress?.total ?? ''} chunks on VPS…`
+                : genProgress
+                  ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
+                  : 'Generating cloned voice…'}
             </span>
           ) : (
             <span className="flex items-center gap-2">
@@ -811,16 +813,51 @@ export default function Home() {
         </button>
 
         {/* GPU safe-to-stop banner — fires when VPS confirms all chunks downloaded */}
-        {gpuState === 'ready' && genPhase === 'safe_to_stop' && (
+        {(genPhase === 'safe_to_stop' || genPhase === 'combining') && (
           <div className="mt-3 px-4 py-3 rounded-xl text-sm font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
             style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#34d399' }}>
             <div className="flex items-center gap-2">
               <span>✅</span>
-              <span>All chunks saved to VPS server! You can safely turn off the GPU now.</span>
+              <span>
+                {genPhase === 'combining'
+                  ? 'All chunks saved — VPS is now combining them. Safe to turn off GPU!'
+                  : 'All chunks saved to VPS server! You can safely turn off the GPU now.'}
+              </span>
             </div>
-            <button onClick={stopGpu} className="btn btn-danger text-xs py-1 px-3 shrink-0">
-              ⏹ Turn Off GPU
-            </button>
+            {gpuState === 'ready' && (
+              <button onClick={stopGpu} className="btn btn-danger text-xs py-1 px-3 shrink-0">
+                ⏹ Turn Off GPU
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* VPS combining progress card */}
+        {genPhase === 'combining' && (
+          <div className="mt-3 px-4 py-4 rounded-xl flex flex-col gap-3"
+            style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.25)' }}>
+            <div className="flex items-start gap-3">
+              <span className="text-xl mt-0.5">🔄</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold" style={{ color: '#93c5fd' }}>
+                  VPS is stitching {genProgress?.total ?? 'all'} chunks into one audio file…
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'rgba(147,197,253,0.6)' }}>
+                  This takes a few seconds. Your audio will be ready to play and download when it's done.
+                </p>
+              </div>
+            </div>
+            {/* Indeterminate animated progress bar */}
+            <div className="w-full rounded-full overflow-hidden" style={{ height: '6px', background: 'rgba(96,165,250,0.12)' }}>
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: '40%',
+                  background: 'linear-gradient(90deg, #60a5fa, #a78bfa)',
+                  animation: 'progress-slide 1.5s ease-in-out infinite',
+                }}
+              />
+            </div>
           </div>
         )}
 
