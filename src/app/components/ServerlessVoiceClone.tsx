@@ -1,12 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { STYLE_PRESETS, normalizeBurmesePhonetics } from '../page';
 
-type Quality = 'Balanced' | 'High Similarity';
-type Style   = 'Natural' | 'Warm Storyteller' | 'Deep Reflective' | 'Soft Intimate' | 'Documentary';
-type Speed   = 'Normal' | 'Slower' | 'Slowest';
-
-const STYLE_OPTIONS: Style[] = ['Natural', 'Warm Storyteller', 'Deep Reflective', 'Soft Intimate', 'Documentary'];
+type Speed = 'Normal' | 'Slower' | 'Slowest';
 const SPEED_OPTIONS: Speed[] = ['Normal', 'Slower', 'Slowest'];
 
 export default function ServerlessVoiceClone() {
@@ -14,9 +11,18 @@ export default function ServerlessVoiceClone() {
   const [refAudio, setRefAudio] = useState<File | null>(null);
   const [promptText, setPromptText] = useState('');
   const [seed, setSeed] = useState<number>(42);
-  const [style, setStyle] = useState<Style>('Natural');
-  const [customStyle, setCustomStyle] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState<string>('audiobook');
+  const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
   const [speed, setSpeed] = useState<Speed>('Normal');
+  const [autoFixBurmese, setAutoFixBurmese] = useState<boolean>(true);
+
+  const handlePresetSelect = (presetId: string) => {
+    setSelectedPreset(presetId);
+    const found = STYLE_PRESETS.find(p => p.id === presetId);
+    if (found) {
+      setCustomStyle(found.prompt);
+    }
+  };
 
   // Serverless Job State
   const [jobId, setJobId] = useState<string | null>(null);
@@ -71,11 +77,12 @@ export default function ServerlessVoiceClone() {
     setStatusDetail('Submitting task to RunPod Serverless queue…');
 
     const fd = new FormData();
-    fd.append('text', text.trim());
+    const processedText = autoFixBurmese ? normalizeBurmesePhonetics(text.trim()) : text.trim();
+    fd.append('text', processedText);
     fd.append('reference_audio', refAudio);
     if (promptText.trim()) fd.append('prompt_text', promptText.trim());
     fd.append('seed', String(seed));
-    fd.append('style', style);
+    fd.append('style', 'Natural');
     fd.append('custom_style', customStyle);
     fd.append('speed', speed);
 
@@ -247,45 +254,73 @@ export default function ServerlessVoiceClone() {
             />
           </div>
 
-          {/* Style & Speed Controls */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider block mb-1 text-gray-400">
+          {/* Style Presets */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold uppercase tracking-wider block text-gray-400">
                 Style Preset
               </label>
-              <select
-                className="w-full text-xs px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-200"
-                value={style}
-                onChange={e => setStyle(e.target.value as Style)}
-              >
-                {STYLE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <span className="text-[10px] text-purple-300">
+                ⚡ Auto-populates prompt
+              </span>
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider block mb-1 text-gray-400">
-                Speaking Speed
-              </label>
-              <select
-                className="w-full text-xs px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-200"
-                value={speed}
-                onChange={e => setSpeed(e.target.value as Speed)}
-              >
-                {SPEED_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
+            <select
+              className="w-full text-xs px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-200"
+              value={selectedPreset}
+              onChange={e => handlePresetSelect(e.target.value)}
+            >
+              {STYLE_PRESETS.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {STYLE_PRESETS.find(p => p.id === selectedPreset)?.desc && (
+              <p className="text-[10px] mt-1 text-gray-400">
+                💡 {STYLE_PRESETS.find(p => p.id === selectedPreset)?.desc}
+              </p>
+            )}
           </div>
 
-          {/* Custom Style */}
+          {/* Speed */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider block mb-1 text-gray-400">
-              Custom Style Prompt <span className="text-gray-500">(optional)</span>
+              Speaking Speed
             </label>
-            <input
-              type="text"
+            <select
+              className="w-full text-xs px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-200"
+              value={speed}
+              onChange={e => setSpeed(e.target.value as Speed)}
+            >
+              {SPEED_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Active Voice Prompt (Editable) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold uppercase tracking-wider block text-gray-400">
+                Voice Prompt <span className="text-gray-500">(applied to all chunks)</span>
+              </label>
+              {customStyle && (
+                <button
+                  type="button"
+                  onClick={() => { setCustomStyle(''); setSelectedPreset('custom'); }}
+                  className="text-[10px] text-purple-400 hover:text-purple-300"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <textarea
+              rows={2}
               value={customStyle}
-              onChange={e => setCustomStyle(e.target.value)}
-              placeholder="e.g. steady cadence, natural audiobook narrator"
-              className="w-full text-xs px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-100 placeholder-gray-500 focus:border-purple-400 focus:outline-none"
+              onChange={e => {
+                setCustomStyle(e.target.value);
+                setSelectedPreset('custom');
+              }}
+              placeholder="Type delivery directives (e.g. steady pacing, calm tone, clear articulation)…"
+              className="w-full text-xs px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-100 placeholder-gray-500 focus:border-purple-400 focus:outline-none resize-y"
             />
           </div>
 
@@ -333,6 +368,17 @@ export default function ServerlessVoiceClone() {
             placeholder="Paste your text to clone here (Burmese or English). Long text will automatically be segmented into balanced chunks…"
             className="w-full text-sm p-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-gray-100 placeholder-gray-500 focus:border-purple-400 focus:outline-none resize-y"
           />
+
+          {/* Auto-fix Burmese Pronunciation Checkbox */}
+          <label className="flex items-center gap-2 cursor-pointer text-xs text-purple-300 hover:text-purple-200 select-none">
+            <input
+              type="checkbox"
+              checked={autoFixBurmese}
+              onChange={e => setAutoFixBurmese(e.target.checked)}
+              className="rounded border-white/20 text-purple-600 focus:ring-purple-500 bg-white/5"
+            />
+            <span>🔤 Auto-fix Burmese Pronunciation (အံ့ဩ ➔ အံ့အော်, လျှာ ➔ ရှာ)</span>
+          </label>
 
           <button
             onClick={handleGenerate}

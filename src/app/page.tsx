@@ -9,8 +9,81 @@ type Quality  = 'Fast' | 'Balanced' | 'High Similarity';
 type Style    = 'Natural' | 'Deep Reflective' | 'Warm Storyteller' | 'Soft Intimate' | 'Documentary';
 type Speed    = 'Normal' | 'Slower' | 'Slowest';
 
+// ─── Style Presets (Battle-tested for consistent speed, tone & pacing) ────────
+export interface StylePreset {
+  id: string;
+  name: string;
+  desc: string;
+  prompt: string;
+}
+
+export const STYLE_PRESETS: StylePreset[] = [
+  {
+    id: 'audiobook',
+    name: '🎙️ 1. Audiobook (Recommended)',
+    desc: 'Steady, calm, and uniform speed across chunks without drifting',
+    prompt: 'audiobook narration, steady and calm tone, consistent pacing and tempo throughout, clear articulation, no speed variation',
+  },
+  {
+    id: 'documentary',
+    name: '📰 2. Documentary / Explainer',
+    desc: 'Clean, even, and factual cadence with constant tempo',
+    prompt: 'documentary narrator, even tempo, steady cadence, calm and clear enunciation, constant speed',
+  },
+  {
+    id: 'storyteller',
+    name: '📖 3. Warm Storyteller',
+    desc: 'Engaging, narrative flow without sudden acceleration',
+    prompt: 'warm storyteller, natural and steady delivery, consistent pitch, even pacing without sudden acceleration',
+  },
+  {
+    id: 'news',
+    name: '📢 4. News & Broadcast',
+    desc: 'Professional, crisp, and authoritative delivery',
+    prompt: 'news anchor, crisp articulation, professional authoritative tone, steady rhythmic delivery, clear enunciation',
+  },
+  {
+    id: 'calm',
+    name: '🧘 5. Calm & Relaxed',
+    desc: 'Slower, unhurried, and peaceful tempo',
+    prompt: 'slow and steady pacing, relaxed calm tone, unhurried cadence, gentle and consistent rhythm',
+  },
+  {
+    id: 'conversational',
+    name: '💬 6. Friendly Conversational',
+    desc: 'Warm and natural dialogue delivery for casual videos',
+    prompt: 'conversational tone, friendly and warm, clear pronunciation, natural steady cadence',
+  },
+  {
+    id: 'dramatic',
+    name: '🎭 7. Deep & Measured',
+    desc: 'Solemn and dramatic tone for serious readings',
+    prompt: 'deep narrative voice, measured tempo, serious and steady delivery, solemn and controlled pace',
+  },
+  {
+    id: 'custom',
+    name: '✍️ 8. Custom (Write your own)',
+    desc: 'Full control — type any custom instructions you want',
+    prompt: '',
+  },
+];
+
+// ─── Burmese Phonetic Normalizer (Fixes irregular TTS mispronunciations) ────────
+export function normalizeBurmesePhonetics(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/အံ့ဩ/g, 'အံ့အော်')
+    .replace(/လျှာ/g, 'ရှာ')
+    .replace(/လျှပ်စစ်/g, 'ရှပ်စစ်')
+    .replace(/လျှောက်/g, 'ရှောက်')
+    .replace(/လျှင်/g, 'ရှင်')
+    .replace(/လျှို့ဝှက်/g, 'ရှို့ဝှက်')
+    .replace(/ဪ/g, 'အော်')
+    .replace(/ဧရာဝတီ/g, 'အေရာဝတီ')
+    .replace(/ဥပမာ/g, 'အုပမာ');
+}
+
 const QUALITY_OPTIONS: Quality[] = ['Fast', 'Balanced', 'High Similarity'];
-const STYLE_OPTIONS: Style[]     = ['Natural', 'Warm Storyteller', 'Deep Reflective', 'Soft Intimate', 'Documentary'];
 const SPEED_OPTIONS: Speed[]     = ['Normal', 'Slower', 'Slowest'];
 
 const GPU_COST_HR = 0.77; // RTX 6000 Ada — update if using different GPU
@@ -145,9 +218,18 @@ export default function Home() {
   const [promptText, setPromptText] = useState('');
   const [seed, setSeed]           = useState<number>(42);
   const [quality, setQuality]     = useState<Quality>('Balanced');
-  const [style, setStyle]         = useState<Style>('Natural');
-  const [customStyle, setCustomStyle] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState<string>('audiobook');
+  const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
   const [speed, setSpeed]         = useState<Speed>('Normal');
+  const [autoFixBurmese, setAutoFixBurmese] = useState<boolean>(true);
+
+  const handlePresetSelect = (presetId: string) => {
+    setSelectedPreset(presetId);
+    const found = STYLE_PRESETS.find(p => p.id === presetId);
+    if (found) {
+      setCustomStyle(found.prompt);
+    }
+  };
 
   // Output
   const [generating, setGenerating] = useState(false);
@@ -262,10 +344,11 @@ export default function Home() {
     setAudioUrl(null);
 
     const fd = new FormData();
-    fd.append('text', text.trim());
+    const processedText = autoFixBurmese ? normalizeBurmesePhonetics(text.trim()) : text.trim();
+    fd.append('text', processedText);
     fd.append('reference_audio', refAudio);
     fd.append('quality', quality);
-    fd.append('style', style);
+    fd.append('style', 'Natural');
     fd.append('custom_style', customStyle);
     fd.append('speed', speed);
     if (promptText.trim()) fd.append('prompt_text', promptText.trim());
@@ -387,7 +470,7 @@ export default function Home() {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}>
-            🎙️ Voice Studio
+            🎙️ Voice Clone Studio
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'rgba(241,240,255,0.45)' }}>
             AI voice cloning · Burmese &amp; 29 languages · Powered by VoxCPM2
@@ -570,20 +653,34 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Style */}
+          {/* Style Presets */}
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider block mb-2"
-              style={{ color: 'rgba(241,240,255,0.4)' }}>
-              Style Preset
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold uppercase tracking-wider block"
+                style={{ color: 'rgba(241,240,255,0.7)' }}>
+                Style Preset
+              </label>
+              <span className="text-[11px] text-purple-300">
+                ⚡ Auto-populates prompt below
+              </span>
+            </div>
             <select
-              className="style-select"
-              value={style}
-              onChange={e => setStyle(e.target.value as Style)}
+              className="style-select w-full"
+              value={selectedPreset}
+              onChange={e => handlePresetSelect(e.target.value)}
               disabled={!isReady}
             >
-              {STYLE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              {STYLE_PRESETS.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
+            {STYLE_PRESETS.find(p => p.id === selectedPreset)?.desc && (
+              <p className="text-[11px] mt-1.5" style={{ color: 'rgba(241,240,255,0.45)' }}>
+                💡 {STYLE_PRESETS.find(p => p.id === selectedPreset)?.desc}
+              </p>
+            )}
           </div>
 
           {/* Speed */}
@@ -602,24 +699,38 @@ export default function Home() {
             </select>
           </div>
 
-          {/* Custom style */}
+          {/* Active Voice Prompt (Editable) */}
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider block mb-2"
-              style={{ color: 'rgba(241,240,255,0.4)' }}>
-              Custom Style <span style={{ color: 'rgba(241,240,255,0.25)' }}>(optional)</span>
-            </label>
-            <input
-              type="text"
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold uppercase tracking-wider block"
+                style={{ color: 'rgba(241,240,255,0.7)' }}>
+                Voice Prompt <span style={{ color: 'rgba(241,240,255,0.35)' }}>(applied to all chunks)</span>
+              </label>
+              {customStyle && (
+                <button
+                  type="button"
+                  onClick={() => { setCustomStyle(''); setSelectedPreset('custom'); }}
+                  className="text-[11px] text-purple-400 hover:text-purple-300"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <textarea
+              rows={2}
               value={customStyle}
-              onChange={e => setCustomStyle(e.target.value)}
-              placeholder="e.g. warm and energetic, Burmese accent"
+              onChange={e => {
+                setCustomStyle(e.target.value);
+                setSelectedPreset('custom');
+              }}
+              placeholder="Type delivery directives (e.g. steady pacing, calm tone, clear articulation)…"
               disabled={!isReady}
-              className="w-full text-sm px-3 py-2 rounded-lg"
+              className="w-full text-xs px-3 py-2 rounded-lg"
               style={{
                 background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: 'rgba(241,240,255,0.9)',
-                outline: 'none',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#f1f0ff',
+                resize: 'vertical',
               }}
             />
           </div>
@@ -669,6 +780,17 @@ export default function Home() {
                 ℹ️ Long script ({text.length} chars) — will be processed smoothly across {Math.ceil(text.length / 250)} chunks.
               </p>
             )}
+
+            {/* Auto-fix Burmese Pronunciation Checkbox */}
+            <label className="flex items-center gap-2 cursor-pointer mt-1 text-xs text-purple-300 hover:text-purple-200 select-none">
+              <input
+                type="checkbox"
+                checked={autoFixBurmese}
+                onChange={e => setAutoFixBurmese(e.target.checked)}
+                className="rounded border-white/20 text-purple-600 focus:ring-purple-500 bg-white/5"
+              />
+              <span>🔤 Auto-fix Burmese Pronunciation (အံ့ဩ ➔ အံ့အော်, လျှာ ➔ ရှာ)</span>
+            </label>
           </div>
 
           {/* Quality */}
@@ -803,7 +925,7 @@ export default function Home() {
 
       {/* ── Footer ── */}
       <footer className="mt-12 pb-6 text-center text-xs" style={{ color: 'rgba(241,240,255,0.2)' }}>
-        Voice Studio · VoxCPM2 · Apache 2.0 · Running on RunPod
+        Voice Clone Studio · VoxCPM2 · Apache 2.0 · Running on RunPod
       </footer>
     </main>
   );
