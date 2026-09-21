@@ -203,7 +203,11 @@ export default function Home() {
       }
       setPodUrl(d.podUrl);
       setCurrentPodId(d.podId);
-      setGpuDetail(`Pod created (${d.gpuType}) — booting…`);
+      // If pod already existed, show reconnecting message
+      const detail = d.createdAt
+        ? `Reconnecting to existing pod (${d.gpuType})…`
+        : `Pod created (${d.gpuType}) — booting…`;
+      setGpuDetail(detail);
       startHealthPoll(d.podUrl);
     } catch (e) {
       setGpuState('error');
@@ -340,27 +344,13 @@ export default function Home() {
     }
   };
 
-  // ── On mount: check if a pod is already running (survives refresh) ──────
+  // ── On mount: clean up intervals only ─────────────────────────────────────
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/voiceclone/api/pod', { cache: 'no-store' });
-        const d = await r.json();
-        if (d.running) {
-          console.log('[Init] Found existing pod:', d.podId);
-          setPodUrl(d.podUrl);
-          setCurrentPodId(d.podId);
-          setGpuState('starting');
-          setGpuDetail(`Reconnected to pod (${d.gpuType}) — checking status…`);
-          startHealthPoll(d.podUrl);
-        }
-      } catch { /* no existing pod */ }
-    })();
     return () => {
       clearInterval(pollRef.current!);
       clearInterval(uptimeRef.current!);
     };
-  }, [startHealthPoll]);
+  }, []);
 
   const isReady    = gpuState === 'ready';
   const canGenerate = isReady && !!text.trim() && !!refAudio && !generating;
