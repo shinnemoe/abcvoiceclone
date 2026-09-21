@@ -406,6 +406,25 @@ export default function Home() {
             throw new Error(s.error || 'Generation failed');
           }
         } catch (e) {
+          // If fetch threw (e.g. GPU was turned off), check if file already finished on VPS
+          try {
+            const vpsCheck = await fetch(`/voiceclone/api/health?endpoint=status&jobId=${job_id}`, { cache: 'no-store' });
+            if (vpsCheck.ok) {
+              const vd = await vpsCheck.json();
+              if (vd.status === 'done') {
+                clearInterval(pollInterval);
+                const finalUrl = `/voiceclone/api/health?endpoint=result&jobId=${job_id}`;
+                setAudioUrl(finalUrl);
+                const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
+                setHistory(h => [{ url: finalUrl, label }, ...h].slice(0, 5));
+                setGenerating(false);
+                setGenProgress(null);
+                setGenPhase('idle');
+                return;
+              }
+            }
+          } catch {}
+
           clearInterval(pollInterval);
           setGenError(e instanceof Error ? e.message : 'Generation failed');
           setGenerating(false);
@@ -430,8 +449,18 @@ export default function Home() {
     }
   };
 
-  // ── On mount: clean up intervals only ─────────────────────────────────────
+  // ── On mount: load completed files from VPS + clean up intervals ──────────
   useEffect(() => {
+    fetch('/voiceclone/api/health?endpoint=recent')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.files?.length) {
+          setHistory(data.files.map((f: { url: string; label: string }) => ({ url: f.url, label: f.label })));
+          setAudioUrl(data.files[0].url);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       clearInterval(pollRef.current!);
       clearInterval(uptimeRef.current!);
