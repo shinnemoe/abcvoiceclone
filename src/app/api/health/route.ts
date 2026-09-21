@@ -178,7 +178,8 @@ export async function GET(req: NextRequest) {
           const id = f.replace('.wav', '');
           return {
             id,
-            url: `/voiceclone/api/health?endpoint=result&jobId=${id}`,
+            // Direct Caddy static URL — full speed, no Next.js proxy overhead
+            url: `/voiceclone/download/${id}.wav`,
             label: `Voice Clone (${new Date(s.mtimeMs).toLocaleTimeString()})`,
             ts: s.mtimeMs,
             size: s.size,

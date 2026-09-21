@@ -387,14 +387,8 @@ export default function Home() {
           if (s.status === 'done') {
             clearInterval(pollInterval);
             setGenPhase('done');
-            // Step 3: Fetch result
-            const resultRes = await fetch(
-              `/voiceclone/api/health?endpoint=result&podUrl=${encodeURIComponent(podUrl)}&jobId=${job_id}`,
-              { cache: 'no-store' }
-            );
-            if (!resultRes.ok) throw new Error('Failed to fetch result');
-            const blob = await resultRes.blob();
-            const url = URL.createObjectURL(blob);
+            // Use direct Caddy static URL — full Hetzner speed, no Next.js overhead
+            const url = `/voiceclone/download/${job_id}.wav`;
             setAudioUrl(url);
             const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
             setHistory(h => [{ url, label }, ...h].slice(0, 5));
@@ -413,7 +407,8 @@ export default function Home() {
               const vd = await vpsCheck.json();
               if (vd.status === 'done') {
                 clearInterval(pollInterval);
-                const finalUrl = `/voiceclone/api/health?endpoint=result&jobId=${job_id}`;
+                // Direct Caddy static URL — instant download
+                const finalUrl = `/voiceclone/download/${job_id}.wav`;
                 setAudioUrl(finalUrl);
                 const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
                 setHistory(h => [{ url: finalUrl, label }, ...h].slice(0, 5));
