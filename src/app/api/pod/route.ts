@@ -115,7 +115,7 @@ async function createPod() {
             dockerArgs: "python backend/cloud_server.py"
             ports: "8000/http,22/tcp"
             ${volumePart}
-            env: [{ key: "MODEL_PATH", value: "/models/VoxCPM2" }]
+            env: [{ key: "MODEL_PATH", value: "/models/VoxCPM2" }, { key: "COMBINE_ON_VPS", value: "true" }]
           }) {
             id
             imageName
