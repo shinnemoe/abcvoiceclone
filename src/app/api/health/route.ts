@@ -118,7 +118,9 @@ export async function GET(req: NextRequest) {
   // ── result endpoint: maybe serve locally combined file ──────────────────
   if (endpoint === 'result' && jobId && VPS_COMBINE) {
     const state = combineJobs.get(jobId);
-    if (state?.phase === 'done') {
+    if (!state) {
+      // No VPS state — fall through to normal proxy
+    } else if (state.phase === 'done') {
       combineJobs.delete(jobId);
       return new NextResponse(state.audio, {
         headers: {
@@ -126,15 +128,13 @@ export async function GET(req: NextRequest) {
           'Content-Disposition': `attachment; filename="voice-clone-${jobId}.wav"`,
         },
       });
-    }
-    if (state?.phase === 'error') {
+    } else if (state.phase === 'error') {
       // Fallback: try fetching from RunPod directly
-      console.warn(`[VPS combine] Falling back to RunPod result for job ${jobId}`);
+      console.warn(`[VPS combine] Error, falling back to RunPod for job ${jobId}:`, state.msg);
       combineJobs.delete(jobId);
       // Fall through to normal proxy below
-    }
-    if (state && state.phase !== 'done') {
-      // Still combining — tell frontend to keep polling
+    } else {
+      // Still downloading or combining — tell frontend to keep polling
       return NextResponse.json({ status: 'combining', progress: null });
     }
   }
