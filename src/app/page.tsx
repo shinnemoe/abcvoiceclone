@@ -7,6 +7,7 @@ type GpuState = 'off' | 'starting' | 'downloading' | 'loading' | 'ready' | 'stop
 type Quality  = 'Fast' | 'Balanced' | 'High Similarity';
 type Style    = 'Natural' | 'Deep Reflective' | 'Warm Storyteller' | 'Soft Intimate' | 'Documentary';
 type Speed    = 'Normal' | 'Slower' | 'Slowest';
+type ReplacePair = { id: string; from: string; to: string };
 
 // ─── Style Presets (Battle-tested for consistent speed, tone & pacing) ────────
 export interface StylePreset {
@@ -203,6 +204,11 @@ export default function Home() {
   const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
   const [speed, setSpeed]         = useState<Speed>('Normal');
 
+  // Pronunciation fix dictionary
+  const [replacePairs, setReplacePairs] = useState<ReplacePair[]>([]);
+  const [showReplaceDict, setShowReplaceDict] = useState(false);
+  const [replaceFlash, setReplaceFlash] = useState(false); // brief highlight after apply
+
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId);
     const found = STYLE_PRESETS.find(p => p.id === presetId);
@@ -210,6 +216,43 @@ export default function Home() {
       setCustomStyle(found.prompt);
     }
   };
+
+  // ── Pronunciation dictionary: load from localStorage ──────────────────────
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('vc-replace-pairs');
+      if (saved) setReplacePairs(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  // ── Pronunciation dictionary: save to localStorage ────────────────────────
+  useEffect(() => {
+    localStorage.setItem('vc-replace-pairs', JSON.stringify(replacePairs));
+  }, [replacePairs]);
+
+  const addReplacePair = () =>
+    setReplacePairs(prev => [...prev, { id: String(Date.now()), from: '', to: '' }]);
+
+  const removeReplacePair = (id: string) =>
+    setReplacePairs(prev => prev.filter(p => p.id !== id));
+
+  const updateReplacePair = (id: string, field: 'from' | 'to', val: string) =>
+    setReplacePairs(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p));
+
+  const applyReplacements = useCallback(() => {
+    const active = replacePairs.filter(p => p.from.trim());
+    if (!active.length) return;
+    setText(prev => {
+      let result = prev;
+      for (const { from, to } of active) {
+        // Plain string replace all (no regex — safe for Burmese Unicode)
+        result = result.split(from).join(to);
+      }
+      return result;
+    });
+    setReplaceFlash(true);
+    setTimeout(() => setReplaceFlash(false), 800);
+  }, [replacePairs]);
 
   // Output
   const [generating, setGenerating] = useState(false);
@@ -779,6 +822,116 @@ export default function Home() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* ── Pronunciation Fix Dictionary ──────────────────────────── */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowReplaceDict(d => !d)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                background: showReplaceDict ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: showReplaceDict ? '#a78bfa' : 'rgba(241,240,255,0.5)',
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <span>🔤 Pronunciation Fix Dictionary</span>
+                {replacePairs.filter(p => p.from.trim()).length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                    style={{ background: 'rgba(167,139,250,0.2)', color: '#c4b5fd' }}>
+                    {replacePairs.filter(p => p.from.trim()).length} rules
+                  </span>
+                )}
+              </span>
+              <span style={{ opacity: 0.5 }}>{showReplaceDict ? '▲' : '▼'}</span>
+            </button>
+
+            {showReplaceDict && (
+              <div className="mt-2 flex flex-col gap-2">
+                <p className="text-[11px]" style={{ color: 'rgba(241,240,255,0.35)' }}>
+                  Words in the left box are replaced with the right box before generating. Saved automatically.
+                </p>
+
+                {replacePairs.length === 0 && (
+                  <p className="text-xs text-center py-3" style={{ color: 'rgba(241,240,255,0.25)' }}>
+                    No rules yet — add your first word pair below.
+                  </p>
+                )}
+
+                {/* Pair list */}
+                <div className="flex flex-col gap-1.5">
+                  {replacePairs.map((pair, i) => (
+                    <div key={pair.id} className="flex items-center gap-1.5">
+                      <span className="text-[10px] w-4 text-center shrink-0" style={{ color: 'rgba(241,240,255,0.25)' }}>{i + 1}</span>
+                      <input
+                        type="text"
+                        value={pair.from}
+                        onChange={e => updateReplacePair(pair.id, 'from', e.target.value)}
+                        placeholder="Find…"
+                        className="flex-1 text-xs px-2 py-1.5 rounded-lg font-mono"
+                        style={{
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          color: '#f1f0ff',
+                          minWidth: 0,
+                        }}
+                      />
+                      <span style={{ color: 'rgba(241,240,255,0.3)', fontSize: '10px' }}>→</span>
+                      <input
+                        type="text"
+                        value={pair.to}
+                        onChange={e => updateReplacePair(pair.id, 'to', e.target.value)}
+                        placeholder="Replace with…"
+                        className="flex-1 text-xs px-2 py-1.5 rounded-lg font-mono"
+                        style={{
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          color: '#f1f0ff',
+                          minWidth: 0,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeReplacePair(pair.id)}
+                        className="shrink-0 w-6 h-6 rounded flex items-center justify-center text-[11px] transition-all hover:bg-red-500/20"
+                        style={{ color: 'rgba(241,240,255,0.3)' }}
+                        title="Remove rule"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={addReplacePair}
+                    className="flex-1 text-xs py-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition-all"
+                    style={{ color: 'rgba(241,240,255,0.6)' }}
+                  >
+                    + Add Rule
+                  </button>
+                  {replacePairs.filter(p => p.from.trim()).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={applyReplacements}
+                      className="flex-1 text-xs py-1.5 rounded-lg font-semibold transition-all"
+                      style={{
+                        background: replaceFlash ? 'rgba(16,185,129,0.25)' : 'rgba(167,139,250,0.15)',
+                        border: replaceFlash ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(167,139,250,0.3)',
+                        color: replaceFlash ? '#34d399' : '#c4b5fd',
+                      }}
+                    >
+                      {replaceFlash ? '✅ Applied!' : '⚡ Apply All Fixes'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>
