@@ -603,9 +603,9 @@ export default function Home() {
           {generating ? (
             <span className="flex items-center gap-3">
               <Waveform />
-                : genProgress
-                  ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
-                  : 'Generating cloned voice…'}
+              {genProgress
+                ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
+                : 'Generating cloned voice…'}
             </span>
           ) : (
             <span className="flex items-center gap-2">
