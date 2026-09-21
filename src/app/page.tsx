@@ -204,7 +204,7 @@ export default function Home() {
   const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
   const [speed, setSpeed]         = useState<Speed>('Normal');
 
-  // Pronunciation fix dictionary — lazy init from localStorage avoids load/save race
+  // Pronunciation fix dictionary — localStorage as fast startup cache, VPS as source of truth
   const [replacePairs, setReplacePairs] = useState<ReplacePair[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -213,7 +213,8 @@ export default function Home() {
     } catch { return []; }
   });
   const [showReplaceDict, setShowReplaceDict] = useState(false);
-  const [replaceFlash, setReplaceFlash] = useState(false); // brief highlight after apply
+  const [replaceFlash, setReplaceFlash] = useState(false);
+  const saveDictTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId);
@@ -223,9 +224,30 @@ export default function Home() {
     }
   };
 
-  // ── Pronunciation dictionary: save to localStorage on every change ──────────────────
+  // ── Pronunciation dictionary: load from VPS on mount (server wins over localStorage) ──
+  useEffect(() => {
+    fetch('/voiceclone/api/health?endpoint=dict', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.pairs) && data.pairs.length > 0) {
+          setReplacePairs(data.pairs);
+          localStorage.setItem('vc-replace-pairs', JSON.stringify(data.pairs));
+        }
+      })
+      .catch(() => {}); // falls back to localStorage value already in state
+  }, []);
+
+  // ── Pronunciation dictionary: save to localStorage immediately + VPS debounced ──
   useEffect(() => {
     localStorage.setItem('vc-replace-pairs', JSON.stringify(replacePairs));
+    if (saveDictTimer.current) clearTimeout(saveDictTimer.current);
+    saveDictTimer.current = setTimeout(() => {
+      fetch('/voiceclone/api/health?endpoint=dict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairs: replacePairs }),
+      }).catch(() => {});
+    }, 800);
   }, [replacePairs]);
 
   const addReplacePair = () =>

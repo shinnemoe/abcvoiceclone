@@ -15,6 +15,11 @@ const VPS_COMBINE = process.env.COMBINE_ON_VPS === 'true';
 const OUTPUT_DIR = '/opt/voiceclone/outputs';
 try { mkdirSync(OUTPUT_DIR, { recursive: true }); } catch {}
 
+// Persistent data directory — config, dictionaries, etc.
+const DATA_DIR  = '/opt/voiceclone/data';
+const DICT_FILE = join(DATA_DIR, 'pronunciation-dict.json');
+try { mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+
 // Clean up audio files older than 24h on startup
 try {
   const now = Date.now();
@@ -166,6 +171,16 @@ export async function GET(req: NextRequest) {
   const podUrl   = req.nextUrl.searchParams.get('podUrl');
   const endpoint = req.nextUrl.searchParams.get('endpoint') || 'health';
   const jobId    = req.nextUrl.searchParams.get('jobId');
+
+  // ── dict endpoint: load pronunciation dictionary from VPS disk ───────────
+  if (endpoint === 'dict') {
+    try {
+      const pairs = existsSync(DICT_FILE) ? JSON.parse(readFileSync(DICT_FILE, 'utf8')) : [];
+      return NextResponse.json({ pairs });
+    } catch {
+      return NextResponse.json({ pairs: [] });
+    }
+  }
 
   // ── recent endpoint: list completed files on VPS disk ──────────────────
   if (endpoint === 'recent') {
@@ -328,6 +343,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const podUrl   = req.nextUrl.searchParams.get('podUrl');
   const endpoint = req.nextUrl.searchParams.get('endpoint') || 'generate';
+
+  // ── dict endpoint: save pronunciation dictionary to VPS disk ───────────
+  if (endpoint === 'dict') {
+    try {
+      const { pairs } = await req.json();
+      writeFileSync(DICT_FILE, JSON.stringify(pairs, null, 2), 'utf8');
+      return NextResponse.json({ ok: true });
+    } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 500 });
+    }
+  }
 
   if (!podUrl) return NextResponse.json({ error: 'podUrl required' }, { status: 400 });
 
