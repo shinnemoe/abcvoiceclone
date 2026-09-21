@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { join } from 'path';
 
 // GET /api/health?podUrl=https://...  — proxy health check
 // GET /api/health?endpoint=status&podUrl=https://...&jobId=... — proxy job status
@@ -9,11 +11,25 @@ import { NextRequest, NextResponse } from 'next/server';
 // Revert: set COMBINE_ON_VPS=false or remove it → old RunPod combining.
 const VPS_COMBINE = process.env.COMBINE_ON_VPS === 'true';
 
+// Persistent output directory — survives VPS restarts
+const OUTPUT_DIR = '/opt/voiceclone/outputs';
+try { mkdirSync(OUTPUT_DIR, { recursive: true }); } catch {}
+
+// Clean up audio files older than 24h on startup
+try {
+  const now = Date.now();
+  for (const f of readdirSync(OUTPUT_DIR)) {
+    const p = join(OUTPUT_DIR, f);
+    if (now - statSync(p).mtimeMs > 24 * 60 * 60 * 1000) unlinkSync(p);
+  }
+} catch {}
+
 // In-memory state for ongoing VPS combines (short-lived, seconds)
 type CombineState =
   | { phase: 'downloading'; ts: number }
+  | { phase: 'chunks_saved'; ts: number }   // all chunks in VPS memory — GPU can stop
   | { phase: 'combining'; ts: number }
-  | { phase: 'done'; audio: ArrayBuffer; ts: number }
+  | { phase: 'done'; filePath: string; ts: number }
   | { phase: 'error'; msg: string; ts: number };
 const combineJobs = new Map<string, CombineState>();
 
@@ -102,16 +118,22 @@ async function downloadAndCombine(
       )
     );
 
-    combineJobs.set(jobId, { phase: 'combining', ts: Date.now() });
+    // ✅ All chunks are now safely in VPS memory — GPU can be stopped
+    combineJobs.set(jobId, { phase: 'chunks_saved', ts: Date.now() });
 
-    // Tell RunPod we're done — releases its waiting thread
+    // Tell RunPod we're done — releases its waiting thread (fire-and-forget)
     fetch(`${podUrl}/chunks-fetched/${jobId}`, { method: 'POST', signal: AbortSignal.timeout(5_000) })
-      .catch(() => {}); // fire-and-forget
+      .catch(() => {});
 
     // Combine on VPS
+    combineJobs.set(jobId, { phase: 'combining', ts: Date.now() });
     const audio = combineWavBuffers(chunkBuffers, sampleRate);
-    combineJobs.set(jobId, { phase: 'done', audio, ts: Date.now() });
-    console.log(`[VPS combine] Job ${jobId}: combined ${chunkCount} chunks on VPS ✓`);
+
+    // Save to disk — survives page refresh and VPS restart
+    const filePath = join(OUTPUT_DIR, `${jobId}.wav`);
+    writeFileSync(filePath, Buffer.from(audio));
+    combineJobs.set(jobId, { phase: 'done', filePath, ts: Date.now() });
+    console.log(`[VPS combine] Job ${jobId}: combined ${chunkCount} chunks → ${filePath} ✓`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[VPS combine] Job ${jobId} failed:`, msg);
@@ -131,17 +153,27 @@ export async function GET(req: NextRequest) {
   if (endpoint === 'result' && jobId && VPS_COMBINE) {
     const state = combineJobs.get(jobId);
     if (!state) {
-      // No VPS state — fall through to normal proxy
+      // No VPS state — check disk for completed job
+      const diskPath = join(OUTPUT_DIR, `${jobId}.wav`);
+      if (existsSync(diskPath)) {
+        combineJobs.delete(jobId);
+        return new NextResponse(readFileSync(diskPath), {
+          headers: {
+            'Content-Type': 'audio/wav',
+            'Content-Disposition': `attachment; filename="voice-clone-${jobId}.wav"`,
+          },
+        });
+      }
+      // Not on disk either — fall through to RunPod proxy
     } else if (state.phase === 'done') {
       combineJobs.delete(jobId);
-      return new NextResponse(state.audio, {
+      return new NextResponse(readFileSync(state.filePath), {
         headers: {
           'Content-Type': 'audio/wav',
           'Content-Disposition': `attachment; filename="voice-clone-${jobId}.wav"`,
         },
       });
     } else if (state.phase === 'error') {
-      // Fallback: try fetching from RunPod directly
       console.warn(`[VPS combine] Error, falling back to RunPod for job ${jobId}:`, state.msg);
       combineJobs.delete(jobId);
       // Fall through to normal proxy below
@@ -155,14 +187,20 @@ export async function GET(req: NextRequest) {
   if (endpoint === 'status' && jobId && VPS_COMBINE) {
     const state = combineJobs.get(jobId);
     if (state?.phase === 'done') {
-      // Audio is ready on VPS — tell frontend to fetch result
       return NextResponse.json({ status: 'done', progress: { done: 1, total: 1 } });
     }
+    if (state?.phase === 'chunks_saved') {
+      // All chunks on VPS — safe to stop GPU now!
+      return NextResponse.json({ status: 'safe_to_stop_gpu', progress: null });
+    }
     if (state && (state.phase === 'downloading' || state.phase === 'combining')) {
-      // Still working — keep frontend polling without hitting dead pod
       return NextResponse.json({ status: 'combining', progress: null });
     }
-    // For error or no state, fall through to RunPod proxy as normal
+    // Check disk too (survived restart)
+    if (existsSync(join(OUTPUT_DIR, `${jobId}.wav`))) {
+      return NextResponse.json({ status: 'done', progress: { done: 1, total: 1 } });
+    }
+    // No state — fall through to RunPod proxy
   }
 
   // Build the target URL

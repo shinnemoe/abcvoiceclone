@@ -303,7 +303,9 @@ export default function Home() {
             setGenProgress({ done: s.progress.done, total: s.progress.total });
           }
 
-          if (s.status === 'combining') {
+          if (s.status === 'safe_to_stop_gpu') {
+            setGenPhase('safe_to_stop');   // ✅ VPS has all chunks — show banner
+          } else if (s.status === 'combining') {
             setGenPhase('combining');
           } else if (s.status === 'processing') {
             setGenPhase('processing');
@@ -614,12 +616,12 @@ export default function Home() {
           )}
         </button>
 
-          {/* GPU safe-to-stop banner — triggers when all chunks done, no Docker rebuild needed */}
-        {generating && genProgress && genProgress.done > 0 && genProgress.done === genProgress.total && (
+          {/* GPU safe-to-stop banner — fires ONLY after VPS confirms all chunks downloaded */}
+        {generating && genPhase === 'safe_to_stop' && (
           <div className="mt-3 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-3"
             style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', color: '#34d399' }}>
-            ✅ All chunks generated! <span className="font-normal" style={{ color: 'rgba(52,211,153,0.8)' }}>You can safely stop the GPU now.</span>
-            <span className="ml-auto font-normal text-xs" style={{ color: 'rgba(52,211,153,0.6)' }}>Combining audio…</span>
+            ✅ Chunks saved to server! <span className="font-normal" style={{ color: 'rgba(52,211,153,0.8)' }}>You can safely stop the GPU now.</span>
+            <span className="ml-auto font-normal text-xs" style={{ color: 'rgba(52,211,153,0.6)' }}>Combining on VPS…</span>
           </div>
         )}
 
