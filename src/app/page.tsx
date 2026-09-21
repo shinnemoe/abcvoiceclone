@@ -146,7 +146,7 @@ export default function Home() {
   // Output
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null);
-  const [genPhase, setGenPhase]       = useState<'idle' | 'processing' | 'combining' | 'done'>('idle');
+  const [genPhase, setGenPhase]       = useState<'idle' | 'processing' | 'safe_to_stop' | 'combining' | 'done'>('idle');
   const [audioUrl, setAudioUrl]     = useState<string | null>(null);
   const [genError, setGenError]     = useState('');
   const [history, setHistory]       = useState<{ url: string; label: string }[]>([]);
