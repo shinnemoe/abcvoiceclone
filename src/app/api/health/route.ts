@@ -11,11 +11,23 @@ const VPS_COMBINE = process.env.COMBINE_ON_VPS === 'true';
 
 // In-memory state for ongoing VPS combines (short-lived, seconds)
 type CombineState =
-  | { phase: 'downloading' }
-  | { phase: 'combining' }
-  | { phase: 'done'; audio: ArrayBuffer }
-  | { phase: 'error'; msg: string };
+  | { phase: 'downloading'; ts: number }
+  | { phase: 'combining'; ts: number }
+  | { phase: 'done'; audio: ArrayBuffer; ts: number }
+  | { phase: 'error'; msg: string; ts: number };
 const combineJobs = new Map<string, CombineState>();
+
+// Clean up abandoned jobs every 5 min (in case user closes tab before downloading)
+const COMBINE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, state] of combineJobs) {
+    if (now - state.ts > COMBINE_TTL_MS) {
+      combineJobs.delete(id);
+      console.log(`[VPS combine] Cleaned up abandoned job ${id}`);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // ── WAV combiner (pure Node.js, no ffmpeg) ───────────────────────────────
 function combineWavBuffers(
@@ -75,7 +87,7 @@ async function downloadAndCombine(
   sampleRate: number
 ): Promise<void> {
   try {
-    combineJobs.set(jobId, { phase: 'downloading' });
+    combineJobs.set(jobId, { phase: 'downloading', ts: Date.now() });
 
     // Download all chunks concurrently
     const chunkBuffers = await Promise.all(
@@ -90,7 +102,7 @@ async function downloadAndCombine(
       )
     );
 
-    combineJobs.set(jobId, { phase: 'combining' });
+    combineJobs.set(jobId, { phase: 'combining', ts: Date.now() });
 
     // Tell RunPod we're done — releases its waiting thread
     fetch(`${podUrl}/chunks-fetched/${jobId}`, { method: 'POST', signal: AbortSignal.timeout(5_000) })
@@ -98,12 +110,12 @@ async function downloadAndCombine(
 
     // Combine on VPS
     const audio = combineWavBuffers(chunkBuffers, sampleRate);
-    combineJobs.set(jobId, { phase: 'done', audio });
+    combineJobs.set(jobId, { phase: 'done', audio, ts: Date.now() });
     console.log(`[VPS combine] Job ${jobId}: combined ${chunkCount} chunks on VPS ✓`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[VPS combine] Job ${jobId} failed:`, msg);
-    combineJobs.set(jobId, { phase: 'error', msg });
+    combineJobs.set(jobId, { phase: 'error', msg, ts: Date.now() });
   }
 }
 
