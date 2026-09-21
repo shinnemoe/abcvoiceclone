@@ -146,6 +146,7 @@ export default function Home() {
   // Output
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null);
+  const [genPhase, setGenPhase]       = useState<'idle' | 'processing' | 'combining' | 'done'>('idle');
   const [audioUrl, setAudioUrl]     = useState<string | null>(null);
   const [genError, setGenError]     = useState('');
   const [history, setHistory]       = useState<{ url: string; label: string }[]>([]);
@@ -236,6 +237,7 @@ export default function Home() {
     setGenerating(true);
     setGenError('');
     setGenProgress(null);
+    setGenPhase('processing');
     setAudioUrl(null);
 
     const fd = new FormData();
@@ -286,8 +288,15 @@ export default function Home() {
             setGenProgress({ done: s.progress.done, total: s.progress.total });
           }
 
+          if (s.status === 'combining') {
+            setGenPhase('combining');
+          } else if (s.status === 'processing') {
+            setGenPhase('processing');
+          }
+
           if (s.status === 'done') {
             clearInterval(pollInterval);
+            setGenPhase('done');
             // Step 3: Fetch result
             const resultRes = await fetch(
               `/voiceclone/api/health?endpoint=result&podUrl=${encodeURIComponent(podUrl)}&jobId=${job_id}`,
@@ -301,6 +310,7 @@ export default function Home() {
             setHistory(h => [{ url, label }, ...h].slice(0, 5));
             setGenerating(false);
             setGenProgress(null);
+            setGenPhase('idle');
           } else if (s.status === 'error') {
             clearInterval(pollInterval);
             throw new Error(s.error || 'Generation failed');
@@ -310,20 +320,23 @@ export default function Home() {
           setGenError(e instanceof Error ? e.message : 'Generation failed');
           setGenerating(false);
           setGenProgress(null);
+          setGenPhase('idle');
         }
       }, 2000);
 
-      // Safety timeout: stop polling after 5 minutes
+      // Safety timeout: stop polling after 15 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
         setGenerating(false);
         setGenProgress(null);
-      }, 300000);
+        setGenPhase('idle');
+      }, 900000);
 
     } catch (e: unknown) {
       setGenError(e instanceof Error ? e.message : 'Generation failed');
       setGenerating(false);
       setGenProgress(null);
+      setGenPhase('idle');
     }
   };
 
@@ -589,9 +602,11 @@ export default function Home() {
           {generating ? (
             <span className="flex items-center gap-3">
               <Waveform />
-              {genProgress
-                ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
-                : 'Generating cloned voice…'}
+              {genPhase === 'combining'
+                ? '⚙️ Combining audio chunks…'
+                : genProgress
+                  ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
+                  : 'Generating cloned voice…'}
             </span>
           ) : (
             <span className="flex items-center gap-2">
@@ -600,7 +615,16 @@ export default function Home() {
           )}
         </button>
 
-        {!isReady && (
+          {/* GPU safe-to-stop banner */}
+        {genPhase === 'combining' && (
+          <div className="mt-3 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-3"
+            style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', color: '#34d399' }}>
+            ✅ All chunks generated! <span className="font-normal" style={{ color: 'rgba(52,211,153,0.8)' }}>You can safely stop the GPU now.</span>
+            <span className="ml-auto font-normal text-xs" style={{ color: 'rgba(52,211,153,0.6)' }}>Combining audio locally…</span>
+          </div>
+        )}
+
+      {!isReady && (
           <p className="text-center text-xs mt-2" style={{ color: 'rgba(241,240,255,0.3)' }}>
             Start the GPU first to enable generation
           </p>
