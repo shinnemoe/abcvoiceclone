@@ -1,6 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { writeFileSync, readFileSync, createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
+import { Readable } from 'stream';
+
+function streamFile(filePath: string, req: NextRequest, contentType: string, filename: string) {
+  const stats = statSync(filePath);
+  const total = stats.size;
+  const range = req.headers.get('range');
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end   = parts[1] ? parseInt(parts[1], 10) : total - 1;
+    const chunkSize = (end - start) + 1;
+
+    const stream = createReadStream(filePath, { start, end });
+    const webStream = Readable.toWeb(stream) as ReadableStream;
+
+    return new NextResponse(webStream, {
+      status: 206,
+      headers: {
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': String(chunkSize),
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    });
+  }
+
+  const stream = createReadStream(filePath);
+  const webStream = Readable.toWeb(stream) as ReadableStream;
+
+  return new NextResponse(webStream, {
+    status: 200,
+    headers: {
+      'Accept-Ranges': 'bytes',
+      'Content-Length': String(total),
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+}
 
 // GET /api/health?podUrl=https://...  — proxy health check
 // GET /api/health?endpoint=status&podUrl=https://...&jobId=... — proxy job status
@@ -199,28 +240,12 @@ export async function GET(req: NextRequest) {
     const wavPath = join(OUTPUT_DIR, `${jobId}.wav`);
 
     if (format === 'mp3' && existsSync(mp3Path)) {
-      const stats = statSync(mp3Path);
-      const data = readFileSync(mp3Path);
-      return new NextResponse(data, {
-        headers: {
-          'Content-Type': 'audio/mpeg',
-          'Content-Length': String(stats.size),
-          'Content-Disposition': `attachment; filename="voice-clone-${jobId}.mp3"`,
-        },
-      });
+      return streamFile(mp3Path, req, 'audio/mpeg', `voice-clone-${jobId}.mp3`);
     }
 
     if (existsSync(wavPath)) {
-      const stats = statSync(wavPath);
-      const data = readFileSync(wavPath);
       combineJobs.delete(jobId);
-      return new NextResponse(data, {
-        headers: {
-          'Content-Type': 'audio/wav',
-          'Content-Length': String(stats.size),
-          'Content-Disposition': `attachment; filename="voice-clone-${jobId}.wav"`,
-        },
-      });
+      return streamFile(wavPath, req, 'audio/wav', `voice-clone-${jobId}.wav`);
     }
 
     if (VPS_COMBINE) {
