@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ServerlessVoiceClone from './components/ServerlessVoiceClone';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type GpuState = 'off' | 'starting' | 'downloading' | 'loading' | 'ready' | 'stopping' | 'error';
@@ -135,9 +136,14 @@ export default function Home() {
     setCurrentPodId('');
   };
 
+  // Tabs
+  const [activeTab, setActiveTab]     = useState<'current' | 'serverless'>('current');
+
   // Form
   const [text, setText]           = useState('');
   const [refAudio, setRefAudio]   = useState<File | null>(null);
+  const [promptText, setPromptText] = useState('');
+  const [seed, setSeed]           = useState<number>(42);
   const [quality, setQuality]     = useState<Quality>('Balanced');
   const [style, setStyle]         = useState<Style>('Natural');
   const [customStyle, setCustomStyle] = useState('');
@@ -262,6 +268,8 @@ export default function Home() {
     fd.append('style', style);
     fd.append('custom_style', customStyle);
     fd.append('speed', speed);
+    if (promptText.trim()) fd.append('prompt_text', promptText.trim());
+    if (seed !== undefined && seed !== null) fd.append('seed', String(seed));
 
     try {
       // Step 1: Start generation — returns {job_id} immediately
@@ -395,7 +403,35 @@ export default function Home() {
         </a>
       </header>
 
-      {/* ── GPU Control Panel ── */}
+      {/* ── Navigation Tabs ── */}
+      <div className="flex items-center gap-3 mb-6 p-1.5 rounded-xl bg-white/[0.03] border border-white/10 w-fit">
+        <button
+          onClick={() => setActiveTab('current')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+            activeTab === 'current'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+          }`}
+        >
+          <span>🎙️</span>
+          <span>Current Tool (Dedicated GPU)</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('serverless')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+            activeTab === 'serverless'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+          }`}
+        >
+          <span>⚡</span>
+          <span>Serverless Tool (Pay-per-Second)</span>
+        </button>
+      </div>
+
+      {activeTab === 'current' ? (
+        <>
+          {/* ── GPU Control Panel ── */}
       <section className="glass-card p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           {/* Status */}
@@ -470,6 +506,69 @@ export default function Home() {
             </p>
           </div>
           <UploadZone file={refAudio} onFile={setRefAudio} disabled={!isReady} />
+
+          {/* Ultimate Cloning (Reference Transcript) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                style={{ color: 'rgba(241,240,255,0.7)' }}>
+                <span>⭐ Reference Transcript</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-normal">
+                  Ultimate Mode
+                </span>
+              </label>
+            </div>
+            <textarea
+              rows={2}
+              value={promptText}
+              onChange={e => setPromptText(e.target.value)}
+              placeholder="Optional: Exact words spoken in your audio clip for 100% consistent pacing & tone."
+              disabled={!isReady}
+              className="w-full text-xs px-3 py-2 rounded-lg"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#f1f0ff',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+
+          {/* Seed Control for Consistency */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider block"
+                style={{ color: 'rgba(241,240,255,0.5)' }}>
+                Random Seed
+              </label>
+              <p className="text-[11px]" style={{ color: 'rgba(241,240,255,0.3)' }}>
+                Locks noise across chunks
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={seed}
+                onChange={e => setSeed(parseInt(e.target.value) || 0)}
+                disabled={!isReady}
+                className="w-20 text-xs px-2.5 py-1.5 rounded-lg text-center font-mono"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  color: '#f1f0ff',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setSeed(Math.floor(Math.random() * 1000000))}
+                disabled={!isReady}
+                className="text-xs px-2.5 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition-all text-purple-300"
+                title="Randomize seed"
+              >
+                🎲
+              </button>
+            </div>
+          </div>
 
           {/* Style */}
           <div>
@@ -696,6 +795,10 @@ export default function Home() {
             ))}
           </div>
         </section>
+      )}
+        </>
+      ) : (
+        <ServerlessVoiceClone />
       )}
 
       {/* ── Footer ── */}
