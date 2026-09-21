@@ -603,8 +603,6 @@ export default function Home() {
           {generating ? (
             <span className="flex items-center gap-3">
               <Waveform />
-              {genPhase === 'combining'
-                ? '⚙️ Combining audio chunks…'
                 : genProgress
                   ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
                   : 'Generating cloned voice…'}
@@ -616,12 +614,12 @@ export default function Home() {
           )}
         </button>
 
-          {/* GPU safe-to-stop banner */}
-        {genPhase === 'combining' && (
+          {/* GPU safe-to-stop banner — triggers when all chunks done, no Docker rebuild needed */}
+        {generating && genProgress && genProgress.done > 0 && genProgress.done === genProgress.total && (
           <div className="mt-3 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-3"
             style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', color: '#34d399' }}>
             ✅ All chunks generated! <span className="font-normal" style={{ color: 'rgba(52,211,153,0.8)' }}>You can safely stop the GPU now.</span>
-            <span className="ml-auto font-normal text-xs" style={{ color: 'rgba(52,211,153,0.6)' }}>Combining audio locally…</span>
+            <span className="ml-auto font-normal text-xs" style={{ color: 'rgba(52,211,153,0.6)' }}>Combining audio…</span>
           </div>
         )}
 
