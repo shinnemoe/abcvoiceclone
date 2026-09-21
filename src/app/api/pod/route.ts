@@ -137,6 +137,18 @@ async function createPod() {
   throw new Error('No GPUs available in any region. Try again in a few minutes.');
 }
 
+// ── Verify pod is actually terminated ─────────────────────────────────
+async function verifyPodTerminated(podId: string): Promise<boolean> {
+  try {
+    const data = await gql(`{ pod(input: { podId: "${podId}" }) { id desiredStatus } }`);
+    const pod = data?.data?.pod;
+    // Pod is gone or not running = terminated successfully
+    return !pod?.id || pod.desiredStatus !== 'RUNNING';
+  } catch {
+    return true; // If we can't reach RunPod, assume it's gone
+  }
+}
+
 // ── Terminate pod ──────────────────────────────────────────────────────────
 async function terminatePod(podId: string) {
   const data = await gql(`mutation { podTerminate(input: { podId: "${podId}" }) }`);
@@ -198,15 +210,34 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 'terminate') {
-    // Use provided podId or read from server state
     const targetId = podId || readState()?.podId;
     if (!targetId) {
-      return NextResponse.json({ error: 'No pod to terminate' }, { status: 400 });
+      clearState(); // Clean up stale state if any
+      return NextResponse.json({ success: true, message: 'No pod found to terminate' });
     }
-    let data: any;
-    try { data = await terminatePod(targetId); } catch { /* pod already gone */ }
+    try {
+      await terminatePod(targetId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[RunPod] Terminate failed:', msg);
+      // Return error — do NOT clear state so user can retry
+      return NextResponse.json(
+        { success: false, error: `Failed to terminate pod: ${msg}. Go to runpod.io to stop it manually.` },
+        { status: 500 }
+      );
+    }
+
+    // Verify it's actually stopped before clearing state
+    const terminated = await verifyPodTerminated(targetId);
+    if (!terminated) {
+      return NextResponse.json(
+        { success: false, error: 'Pod did not stop — still running on RunPod. Go to runpod.io to stop it manually.' },
+        { status: 500 }
+      );
+    }
+
     clearState();
-    return NextResponse.json(data);
+    return NextResponse.json({ success: true });
   }
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

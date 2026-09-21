@@ -218,20 +218,31 @@ export default function Home() {
   // ── Stop GPU (terminate pod completely) ─────────────────────────────────
   const stopGpu = async () => {
     setGpuState('stopping');
+    setGpuDetail('Terminating pod on RunPod…');
     clearInterval(pollRef.current!);
     clearInterval(uptimeRef.current!);
     try {
-      await fetch('/voiceclone/api/pod', {
+      const res = await fetch('/voiceclone/api/pod', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'terminate' }),
       });
-    } finally {
+      const d = await res.json();
+      if (!res.ok || d.success === false) {
+        // Termination failed — keep state so user can retry, show error
+        setGpuState('error');
+        setGpuDetail(d.error || 'Failed to stop GPU. Go to runpod.io to stop it manually.');
+        return;
+      }
+      // Confirmed stopped
       setGpuState('off');
       setGpuDetail('');
       setUptime(0);
       setPodUrl('');
       setCurrentPodId('');
+    } catch (e) {
+      setGpuState('error');
+      setGpuDetail('Network error stopping GPU. Check runpod.io to verify it stopped.');
     }
   };
 
