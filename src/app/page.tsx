@@ -204,8 +204,14 @@ export default function Home() {
   const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
   const [speed, setSpeed]         = useState<Speed>('Normal');
 
-  // Pronunciation fix dictionary
-  const [replacePairs, setReplacePairs] = useState<ReplacePair[]>([]);
+  // Pronunciation fix dictionary — lazy init from localStorage avoids load/save race
+  const [replacePairs, setReplacePairs] = useState<ReplacePair[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('vc-replace-pairs');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [showReplaceDict, setShowReplaceDict] = useState(false);
   const [replaceFlash, setReplaceFlash] = useState(false); // brief highlight after apply
 
@@ -217,15 +223,7 @@ export default function Home() {
     }
   };
 
-  // ── Pronunciation dictionary: load from localStorage ──────────────────────
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('vc-replace-pairs');
-      if (saved) setReplacePairs(JSON.parse(saved));
-    } catch {}
-  }, []);
-
-  // ── Pronunciation dictionary: save to localStorage ────────────────────────
+  // ── Pronunciation dictionary: save to localStorage on every change ──────────────────
   useEffect(() => {
     localStorage.setItem('vc-replace-pairs', JSON.stringify(replacePairs));
   }, [replacePairs]);
