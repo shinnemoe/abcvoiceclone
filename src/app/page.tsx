@@ -353,6 +353,9 @@ export default function Home() {
         setAudioUrl(url);
         const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
         setHistory(h => [{ url, label }, ...h].slice(0, 5));
+        setGenerating(false);
+        setGenProgress(null);
+        setGenPhase('idle');
         return;
       }
 
