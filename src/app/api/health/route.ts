@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
+import { spawn } from 'child_process';
 
 // GET /api/health?podUrl=https://...  — proxy health check
 // GET /api/health?endpoint=status&podUrl=https://...&jobId=... — proxy job status
@@ -159,6 +160,20 @@ async function downloadAndCombine(
     writeFileSync(filePath, Buffer.from(audio));
     combineJobs.set(jobId, { phase: 'done', filePath, ts: Date.now() });
     console.log(`[VPS combine] Job ${jobId}: combined ${chunkCount} chunks → ${filePath} ✓`);
+
+    // Background MP3 conversion — non-blocking, 4x smaller for faster downloads
+    const mp3Path = join(OUTPUT_DIR, `${jobId}.mp3`);
+    const ff = spawn('ffmpeg', ['-i', filePath, '-codec:a', 'libmp3lame', '-b:a', '192k', '-y', mp3Path], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    ff.unref();
+    ff.on('close', (code: number) => {
+      if (code === 0) console.log(`[VPS mp3] Job ${jobId}: MP3 ready → ${mp3Path} ✓`);
+      else console.warn(`[VPS mp3] Job ${jobId}: ffmpeg exited with code ${code}`);
+    });
+    // Suppress TS unused-var warning — event listener on detached process
+    void ff;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[VPS combine] Job ${jobId} failed:`, msg);
@@ -191,10 +206,12 @@ export async function GET(req: NextRequest) {
           const p = join(OUTPUT_DIR, f);
           const s = statSync(p);
           const id = f.replace('.wav', '');
+          const mp3 = join(OUTPUT_DIR, `${id}.mp3`);
           return {
             id,
             // Direct Caddy static URL — full speed, no Next.js proxy overhead
             url: `/voiceclone/download/${id}.wav`,
+            mp3url: existsSync(mp3) ? `/voiceclone/download/${id}.mp3` : null,
             label: `Voice Clone (${new Date(s.mtimeMs).toLocaleTimeString()})`,
             ts: s.mtimeMs,
             size: s.size,

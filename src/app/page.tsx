@@ -279,8 +279,9 @@ export default function Home() {
   const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null);
   const [genPhase, setGenPhase]       = useState<'idle' | 'processing' | 'safe_to_stop' | 'combining' | 'done'>('idle');
   const [audioUrl, setAudioUrl]     = useState<string | null>(null);
+  const [audioMp3Url, setAudioMp3Url] = useState<string | null>(null); // MP3 version (~4x smaller)
   const [genError, setGenError]     = useState('');
-  const [history, setHistory]       = useState<{ url: string; label: string }[]>([]);
+  const [history, setHistory]       = useState<{ url: string; mp3url?: string | null; label: string }[]>([]);
 
   // ── Poll /health until ready ──────────────────────────────────────────────
   const startHealthPoll = useCallback((url: string) => {
@@ -452,9 +453,11 @@ export default function Home() {
             setGenPhase('done');
             // Use direct Caddy static URL — full Hetzner speed, no Next.js overhead
             const url = `/voiceclone/download/${job_id}.wav`;
+            const mp3 = `/voiceclone/download/${job_id}.mp3`;
             setAudioUrl(url);
+            setAudioMp3Url(mp3); // MP3 converts in background — ready in ~10s
             const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
-            setHistory(h => [{ url, label }, ...h].slice(0, 5));
+            setHistory(h => [{ url, mp3url: mp3, label }, ...h].slice(0, 5));
             setGenerating(false);
             setGenProgress(null);
             setGenPhase('idle');
@@ -472,9 +475,11 @@ export default function Home() {
                 clearInterval(pollInterval);
                 // Direct Caddy static URL — instant download
                 const finalUrl = `/voiceclone/download/${job_id}.wav`;
+                const finalMp3 = `/voiceclone/download/${job_id}.mp3`;
                 setAudioUrl(finalUrl);
+                setAudioMp3Url(finalMp3);
                 const label = text.trim().slice(0, 40) + (text.length > 40 ? '…' : '');
-                setHistory(h => [{ url: finalUrl, label }, ...h].slice(0, 5));
+                setHistory(h => [{ url: finalUrl, mp3url: finalMp3, label }, ...h].slice(0, 5));
                 setGenerating(false);
                 setGenProgress(null);
                 setGenPhase('idle');
@@ -513,8 +518,9 @@ export default function Home() {
       .then(r => r.json())
       .then(data => {
         if (data?.files?.length) {
-          setHistory(data.files.map((f: { url: string; label: string }) => ({ url: f.url, label: f.label })));
+          setHistory(data.files.map((f: { url: string; mp3url?: string | null; label: string }) => ({ url: f.url, mp3url: f.mp3url, label: f.label })));
           setAudioUrl(data.files[0].url);
+          setAudioMp3Url(data.files[0].mp3url ?? null);
         }
       })
       .catch(() => {});
@@ -1090,15 +1096,30 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            <a
-              href={audioUrl}
-              download={`voice-clone-${Date.now()}.wav`}
-              className="btn btn-ghost text-xs"
-            >
-              ⬇ Download
-            </a>
+            {/* Download buttons — MP3 is 4x smaller for slow international connections */}
+            <div className="flex gap-2 items-center">
+              {audioMp3Url && (
+                <a
+                  href={audioMp3Url}
+                  download={`voice-clone-${Date.now()}.mp3`}
+                  className="btn btn-ghost text-xs"
+                  title="MP3 (~4x smaller, faster download)"
+                >
+                  ⬇ MP3
+                </a>
+              )}
+              <a
+                href={audioUrl}
+                download={`voice-clone-${Date.now()}.wav`}
+                className="btn btn-ghost text-xs"
+                title="WAV (lossless, larger file)"
+                style={audioMp3Url ? { opacity: 0.5, fontSize: '10px' } : {}}
+              >
+                {audioMp3Url ? 'WAV' : '⬇ Download'}
+              </a>
+            </div>
           </div>
-          <audio controls autoPlay src={audioUrl} className="w-full" />
+          <audio controls autoPlay src={audioUrl?.replace('/voiceclone/download/', '/voiceclone/stream/')} className="w-full" />
         </section>
       )}
 
@@ -1114,10 +1135,16 @@ export default function Home() {
                 <span className="text-sm" style={{ color: 'rgba(241,240,255,0.6)' }}>
                   {i + 2}. {item.label}
                 </span>
-                <div className="flex gap-2">
-                  <audio src={item.url} controls className="h-8" style={{ width: '200px' }} />
-                  <a href={item.url} download={`clone-${i + 2}.wav`} className="btn btn-ghost text-xs py-1 px-3">
-                    ⬇
+                <div className="flex gap-2 items-center">
+                  <audio src={item.url?.replace('/voiceclone/download/', '/voiceclone/stream/')} controls className="h-8" style={{ width: '200px' }} />
+                  {item.mp3url && (
+                    <a href={item.mp3url} download={`clone-${i + 2}.mp3`} className="btn btn-ghost text-xs py-1 px-2" title="MP3 (smaller)">
+                      ⬇MP3
+                    </a>
+                  )}
+                  <a href={item.url} download={`clone-${i + 2}.wav`} className="btn btn-ghost text-xs py-1 px-2"
+                    style={item.mp3url ? { opacity: 0.5, fontSize: '10px' } : {}} title="WAV (lossless)">
+                    {item.mp3url ? 'WAV' : '⬇'}
                   </a>
                 </div>
               </div>
