@@ -67,21 +67,6 @@ export const STYLE_PRESETS: StylePreset[] = [
   },
 ];
 
-// ─── Burmese Phonetic Normalizer (Fixes irregular TTS mispronunciations) ────────
-export function normalizeBurmesePhonetics(input: string): string {
-  if (!input) return '';
-  return input
-    .replace(/အံ့ဩ/g, 'အံ့အော်')
-    .replace(/လျှာ/g, 'ရှာ')
-    .replace(/လျှပ်စစ်/g, 'ရှပ်စစ်')
-    .replace(/လျှောက်/g, 'ရှောက်')
-    .replace(/လျှင်/g, 'ရှင်')
-    .replace(/လျှို့ဝှက်/g, 'ရှို့ဝှက်')
-    .replace(/ဪ/g, 'အော်')
-    .replace(/ဧရာဝတီ/g, 'အေရာဝတီ')
-    .replace(/ဥပမာ/g, 'အုပမာ');
-}
-
 const QUALITY_OPTIONS: Quality[] = ['Fast', 'Balanced', 'High Similarity'];
 const SPEED_OPTIONS: Speed[]     = ['Normal', 'Slower', 'Slowest'];
 
@@ -217,7 +202,6 @@ export default function Home() {
   const [selectedPreset, setSelectedPreset] = useState<string>('audiobook');
   const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
   const [speed, setSpeed]         = useState<Speed>('Normal');
-  const [autoFixBurmese, setAutoFixBurmese] = useState<boolean>(true);
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId);
@@ -340,8 +324,7 @@ export default function Home() {
     setAudioUrl(null);
 
     const fd = new FormData();
-    const processedText = autoFixBurmese ? normalizeBurmesePhonetics(text.trim()) : text.trim();
-    fd.append('text', processedText);
+    fd.append('text', text.trim());
     fd.append('reference_audio', refAudio);
     fd.append('quality', quality);
     fd.append('style', 'Natural');
@@ -749,16 +732,6 @@ export default function Home() {
               </p>
             )}
 
-            {/* Auto-fix Burmese Pronunciation Checkbox */}
-            <label className="flex items-center gap-2 cursor-pointer mt-1 text-xs text-purple-300 hover:text-purple-200 select-none">
-              <input
-                type="checkbox"
-                checked={autoFixBurmese}
-                onChange={e => setAutoFixBurmese(e.target.checked)}
-                className="rounded border-white/20 text-purple-600 focus:ring-purple-500 bg-white/5"
-              />
-              <span>🔤 Auto-fix Burmese Pronunciation (အံ့ဩ ➔ အံ့အော်, လျှာ ➔ ရှာ)</span>
-            </label>
           </div>
 
           {/* Quality */}
@@ -805,12 +778,17 @@ export default function Home() {
           )}
         </button>
 
-          {/* GPU safe-to-stop banner — fires ONLY after VPS confirms all chunks downloaded */}
-        {generating && genPhase === 'safe_to_stop' && (
-          <div className="mt-3 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-3"
-            style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', color: '#34d399' }}>
-            ✅ Chunks saved to server! <span className="font-normal" style={{ color: 'rgba(52,211,153,0.8)' }}>You can safely stop the GPU now.</span>
-            <span className="ml-auto font-normal text-xs" style={{ color: 'rgba(52,211,153,0.6)' }}>Combining on VPS…</span>
+        {/* GPU safe-to-stop banner — fires when VPS confirms all chunks downloaded */}
+        {gpuState === 'ready' && genPhase === 'safe_to_stop' && (
+          <div className="mt-3 px-4 py-3 rounded-xl text-sm font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+            style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#34d399' }}>
+            <div className="flex items-center gap-2">
+              <span>✅</span>
+              <span>All chunks saved to VPS server! You can safely turn off the GPU now.</span>
+            </div>
+            <button onClick={stopGpu} className="btn btn-danger text-xs py-1 px-3 shrink-0">
+              ⏹ Turn Off GPU
+            </button>
           </div>
         )}
 
@@ -838,6 +816,30 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── GPU Safe to Stop Reminder (Persistent when audio is ready) ── */}
+      {gpuState === 'ready' && audioUrl && (
+        <div className="glass-card p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-2 border-emerald-500/40 bg-emerald-500/10">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="text-sm font-bold text-emerald-300">
+                Audio is finished &amp; safely saved on our VPS server!
+              </p>
+              <p className="text-xs text-emerald-400/90 mt-0.5">
+                You can safely turn off the GPU now to stop charges. Your audio is hosted on the VPS and can still be played or downloaded.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={stopGpu}
+            className="btn btn-danger text-xs px-4 py-2 font-bold shrink-0 flex items-center gap-1.5 shadow-lg shadow-red-500/20"
+          >
+            <span>⏹</span>
+            <span>Turn Off GPU Now ($0/hr)</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Audio Output ── */}
       {audioUrl && (
         <section className="audio-result mb-6">
@@ -846,8 +848,8 @@ export default function Home() {
               <Waveform />
               <div>
                 <p className="text-sm font-semibold">Generated Audio</p>
-                <p className="text-xs" style={{ color: 'rgba(241,240,255,0.4)' }}>
-                  48kHz · Voice cloned with VoxCPM2
+                <p className="text-xs text-emerald-400">
+                  ● Saved on VPS server · 48kHz WAV · Safe to download anytime
                 </p>
               </div>
             </div>
