@@ -151,6 +151,20 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── status endpoint: check VPS combine state FIRST (pod may already be stopped) ──
+  if (endpoint === 'status' && jobId && VPS_COMBINE) {
+    const state = combineJobs.get(jobId);
+    if (state?.phase === 'done') {
+      // Audio is ready on VPS — tell frontend to fetch result
+      return NextResponse.json({ status: 'done', progress: { done: 1, total: 1 } });
+    }
+    if (state && (state.phase === 'downloading' || state.phase === 'combining')) {
+      // Still working — keep frontend polling without hitting dead pod
+      return NextResponse.json({ status: 'combining', progress: null });
+    }
+    // For error or no state, fall through to RunPod proxy as normal
+  }
+
   // Build the target URL
   let targetUrl: string;
   if (endpoint === 'health') {
