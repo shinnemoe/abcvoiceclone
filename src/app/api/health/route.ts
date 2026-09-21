@@ -45,53 +45,74 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// ── WAV combiner (pure Node.js, no ffmpeg) ───────────────────────────────
-function combineWavBuffers(
-  buffers: ArrayBuffer[],
-  sampleRate: number,
-  silenceGapSec = 0.3
-): ArrayBuffer {
-  // WAV is: 44-byte header + float32 PCM
-  const silenceSamples = Math.floor(sampleRate * silenceGapSec);
-  const silenceBytes = silenceSamples * 4; // float32 = 4 bytes/sample
+// ── WAV header parser ─────────────────────────────────────────────────────
+function parseWavHeader(buf: ArrayBuffer) {
+  const view = new DataView(buf);
+  let offset = 12; // skip RIFF + WAVE
+  let audioFormat = 1, numChannels = 1, sampleRate = 24000, bitsPerSample = 16;
+  let dataOffset = 44, dataSize = buf.byteLength - 44;
 
-  let totalPcm = 0;
+  while (offset + 8 <= buf.byteLength) {
+    const id = String.fromCharCode(
+      view.getUint8(offset), view.getUint8(offset+1),
+      view.getUint8(offset+2), view.getUint8(offset+3)
+    );
+    const size = view.getUint32(offset + 4, true);
+    if (id === 'fmt ') {
+      audioFormat  = view.getUint16(offset + 8,  true);
+      numChannels  = view.getUint16(offset + 10, true);
+      sampleRate   = view.getUint32(offset + 12, true);
+      bitsPerSample = view.getUint16(offset + 22, true);
+    } else if (id === 'data') {
+      dataOffset = offset + 8;
+      dataSize   = size;
+      break;
+    }
+    offset += 8 + size + (size & 1); // WAV chunks are word-aligned
+  }
+  return { audioFormat, numChannels, sampleRate, bitsPerSample, dataOffset, dataSize };
+}
+
+// ── WAV combiner — reads actual format from chunks, no hardcoded assumptions ─
+function combineWavBuffers(buffers: ArrayBuffer[], silenceGapSec = 0.3): ArrayBuffer {
+  const fmt = parseWavHeader(buffers[0]);
+  const blockAlign  = fmt.numChannels * (fmt.bitsPerSample / 8);
+  const byteRate    = fmt.sampleRate * blockAlign;
+  const silenceBytes = Math.floor(fmt.sampleRate * silenceGapSec) * blockAlign;
+
+  let totalData = 0;
   const parts: Uint8Array[] = [];
 
   for (let i = 0; i < buffers.length; i++) {
     if (i > 0) {
-      parts.push(new Uint8Array(silenceBytes)); // zeroed = silence
-      totalPcm += silenceBytes;
+      parts.push(new Uint8Array(silenceBytes)); // zero = silence
+      totalData += silenceBytes;
     }
-    const pcm = new Uint8Array(buffers[i], 44); // skip 44-byte WAV header
-    parts.push(pcm);
-    totalPcm += pcm.byteLength;
+    const f = parseWavHeader(buffers[i]);
+    parts.push(new Uint8Array(buffers[i], f.dataOffset, f.dataSize));
+    totalData += f.dataSize;
   }
 
-  // Build WAV header for IEEE float32 mono
-  const out = new Uint8Array(44 + totalPcm);
+  // Write correct header using actual format values from chunks
+  const out  = new Uint8Array(44 + totalData);
   const view = new DataView(out.buffer);
-  const enc = new TextEncoder();
+  const enc  = new TextEncoder();
   out.set(enc.encode('RIFF'), 0);
-  view.setUint32(4, 36 + totalPcm, true);       // file size - 8
+  view.setUint32(4,  36 + totalData, true);
   out.set(enc.encode('WAVE'), 8);
   out.set(enc.encode('fmt '), 12);
-  view.setUint32(16, 16, true);                  // fmt chunk size
-  view.setUint16(20, 3, true);                   // IEEE float
-  view.setUint16(22, 1, true);                   // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 4, true);      // byte rate
-  view.setUint16(32, 4, true);                   // block align
-  view.setUint16(34, 32, true);                  // bits per sample
+  view.setUint32(16, 16,                true);
+  view.setUint16(20, fmt.audioFormat,   true); // actual format (1=PCM, 3=float)
+  view.setUint16(22, fmt.numChannels,   true);
+  view.setUint32(24, fmt.sampleRate,    true);
+  view.setUint32(28, byteRate,          true);
+  view.setUint16(32, blockAlign,        true);
+  view.setUint16(34, fmt.bitsPerSample, true);
   out.set(enc.encode('data'), 36);
-  view.setUint32(40, totalPcm, true);
+  view.setUint32(40, totalData, true);
 
-  // Write PCM data
   let offset = 44;
-  for (const part of parts) {
-    out.set(part, offset);
-    offset += part.byteLength;
-  }
+  for (const p of parts) { out.set(p, offset); offset += p.byteLength; }
   return out.buffer;
 }
 
@@ -100,7 +121,6 @@ async function downloadAndCombine(
   jobId: string,
   podUrl: string,
   chunkCount: number,
-  sampleRate: number
 ): Promise<void> {
   try {
     combineJobs.set(jobId, { phase: 'downloading', ts: Date.now() });
@@ -125,9 +145,9 @@ async function downloadAndCombine(
     fetch(`${podUrl}/chunks-fetched/${jobId}`, { method: 'POST', signal: AbortSignal.timeout(5_000) })
       .catch(() => {});
 
-    // Combine on VPS
+    // Combine on VPS (format read from actual WAV headers)
     combineJobs.set(jobId, { phase: 'combining', ts: Date.now() });
-    const audio = combineWavBuffers(chunkBuffers, sampleRate);
+    const audio = combineWavBuffers(chunkBuffers);
 
     // Save to disk — survives page refresh and VPS restart
     const filePath = join(OUTPUT_DIR, `${jobId}.wav`);
@@ -228,7 +248,7 @@ export async function GET(req: NextRequest) {
         const existing = combineJobs.get(jobId);
         if (!existing) {
           // Kick off async download+combine (don't await — returns immediately)
-          downloadAndCombine(jobId, podUrl, data.chunk_count, data.sample_rate);
+          downloadAndCombine(jobId, podUrl, data.chunk_count);
         }
         const state = combineJobs.get(jobId);
         if (state?.phase === 'done') {
