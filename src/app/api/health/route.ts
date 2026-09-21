@@ -194,12 +194,30 @@ export async function GET(req: NextRequest) {
 
   // ── result endpoint: maybe serve locally combined file (works even if pod is stopped) ──
   if (endpoint === 'result' && jobId) {
-    const diskPath = join(OUTPUT_DIR, `${jobId}.wav`);
-    if (existsSync(diskPath)) {
+    const format = req.nextUrl.searchParams.get('format') || 'wav';
+    const mp3Path = join(OUTPUT_DIR, `${jobId}.mp3`);
+    const wavPath = join(OUTPUT_DIR, `${jobId}.wav`);
+
+    if (format === 'mp3' && existsSync(mp3Path)) {
+      const stats = statSync(mp3Path);
+      const data = readFileSync(mp3Path);
+      return new NextResponse(data, {
+        headers: {
+          'Content-Type': 'audio/mpeg',
+          'Content-Length': String(stats.size),
+          'Content-Disposition': `attachment; filename="voice-clone-${jobId}.mp3"`,
+        },
+      });
+    }
+
+    if (existsSync(wavPath)) {
+      const stats = statSync(wavPath);
+      const data = readFileSync(wavPath);
       combineJobs.delete(jobId);
-      return new NextResponse(readFileSync(diskPath), {
+      return new NextResponse(data, {
         headers: {
           'Content-Type': 'audio/wav',
+          'Content-Length': String(stats.size),
           'Content-Disposition': `attachment; filename="voice-clone-${jobId}.wav"`,
         },
       });
