@@ -294,7 +294,7 @@ export default function Home() {
         const d = await r.json();
         if (d.status === 'downloading') {
           setGpuState('downloading');
-          setGpuDetail('Saving model to network volume (first time only)…');
+          setGpuDetail('Downloading VoxCPM2 model (~2 mins, zero volume cost)…');
         } else if (d.status === 'loading') {
           setGpuState('loading');
           setGpuDetail('Loading VoxCPM2 into GPU memory…');

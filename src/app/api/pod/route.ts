@@ -4,7 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY!;
-const NETWORK_VOLUME_ID = process.env.RUNPOD_NETWORK_VOLUME_ID!;
+const NETWORK_VOLUME_ID = process.env.RUNPOD_NETWORK_VOLUME_ID || '';
 const IMAGE             = process.env.RUNPOD_IMAGE || 'ghcr.io/shinnemoe/voice-studio:latest';
 const GQL               = `https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}`;
 const POD_STATE_FILE    = join(tmpdir(), 'voiceclone-pod.json');
@@ -87,8 +87,7 @@ async function getGpuTypesByPrice() {
 // ── Create pod with first available GPU (cheapest first) ───────────────────
 async function createPod() {
   const configs = [
-    { withVolume: true,  cloudType: 'SECURE', diskGb: 20  },
-    { withVolume: false, cloudType: 'ALL',    diskGb: 50  },
+    { withVolume: false, cloudType: 'ALL', diskGb: 50 },
   ];
 
   // Fetch live pricing — try cheapest GPUs first
