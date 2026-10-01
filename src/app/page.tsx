@@ -19,50 +19,56 @@ export interface StylePreset {
 
 export const STYLE_PRESETS: StylePreset[] = [
   {
+    id: 'pure_clone',
+    name: '⭐ 1. Pure Voice Clone (Recommended for Burmese)',
+    desc: 'No English tags — replicates the natural tone, pace, and pitch of your reference audio directly',
+    prompt: '',
+  },
+  {
     id: 'audiobook',
-    name: '🎙️ 1. Audiobook (Recommended)',
+    name: '🎙️ 2. Audiobook Narration',
     desc: 'Steady, calm, and uniform speed across chunks without drifting',
     prompt: 'audiobook narration, steady and calm tone, consistent pacing and tempo throughout, clear articulation, no speed variation',
   },
   {
     id: 'documentary',
-    name: '📰 2. Documentary / Explainer',
+    name: '📰 3. Documentary / Explainer',
     desc: 'Clean, even, and factual cadence with constant tempo',
     prompt: 'documentary narrator, even tempo, steady cadence, calm and clear enunciation, constant speed',
   },
   {
     id: 'storyteller',
-    name: '📖 3. Warm Storyteller',
+    name: '📖 4. Warm Storyteller',
     desc: 'Engaging, narrative flow without sudden acceleration',
     prompt: 'warm storyteller, natural and steady delivery, consistent pitch, even pacing without sudden acceleration',
   },
   {
     id: 'news',
-    name: '📢 4. News & Broadcast',
+    name: '📢 5. News & Broadcast',
     desc: 'Professional, crisp, and authoritative delivery',
     prompt: 'news anchor, crisp articulation, professional authoritative tone, steady rhythmic delivery, clear enunciation',
   },
   {
     id: 'calm',
-    name: '🧘 5. Calm & Relaxed',
+    name: '🧘 6. Calm & Relaxed',
     desc: 'Slower, unhurried, and peaceful tempo',
     prompt: 'slow and steady pacing, relaxed calm tone, unhurried cadence, gentle and consistent rhythm',
   },
   {
     id: 'conversational',
-    name: '💬 6. Friendly Conversational',
+    name: '💬 7. Friendly Conversational',
     desc: 'Warm and natural dialogue delivery for casual videos',
     prompt: 'conversational tone, friendly and warm, clear pronunciation, natural steady cadence',
   },
   {
     id: 'dramatic',
-    name: '🎭 7. Deep & Measured',
+    name: '🎭 8. Deep & Measured',
     desc: 'Solemn and dramatic tone for serious readings',
     prompt: 'deep narrative voice, measured tempo, serious and steady delivery, solemn and controlled pace',
   },
   {
     id: 'custom',
-    name: '✍️ 8. Custom (Write your own)',
+    name: '✍️ 9. Custom (Write your own)',
     desc: 'Full control — type any custom instructions you want',
     prompt: '',
   },
@@ -201,9 +207,10 @@ export default function Home() {
   const [promptText, setPromptText] = useState('');
   const [seed, setSeed]           = useState<number>(42);
   const [quality, setQuality]     = useState<Quality>('Balanced');
-  const [selectedPreset, setSelectedPreset] = useState<string>('audiobook');
-  const [customStyle, setCustomStyle] = useState<string>(STYLE_PRESETS[0].prompt);
+  const [selectedPreset, setSelectedPreset] = useState<string>('pure_clone');
+  const [customStyle, setCustomStyle] = useState<string>('');
   const [speed, setSpeed]         = useState<Speed>('Normal');
+  const [contextChaining, setContextChaining] = useState<boolean>(true);
 
   // Pronunciation fix dictionary — localStorage as fast startup cache, VPS as source of truth
   const [replacePairs, setReplacePairs] = useState<ReplacePair[]>(() => {
@@ -397,6 +404,7 @@ export default function Home() {
     fd.append('speed', speed);
     if (promptText.trim()) fd.append('prompt_text', promptText.trim());
     if (seed !== undefined && seed !== null) fd.append('seed', String(seed));
+    fd.append('context_chaining', String(contextChaining));
 
     try {
       // Step 1: Start generation — returns {job_id} immediately
@@ -674,7 +682,7 @@ export default function Home() {
                 Random Seed
               </label>
               <p className="text-[11px]" style={{ color: 'rgba(241,240,255,0.3)' }}>
-                Locks noise across chunks
+                Reproducibility (same script + seed = same audio)
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -700,6 +708,29 @@ export default function Home() {
                 🎲
               </button>
             </div>
+          </div>
+
+          {/* Rolling Audio Continuation Toggle */}
+          <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider block"
+                style={{ color: 'rgba(241,240,255,0.7)' }}>
+                Rolling Continuation
+              </label>
+              <p className="text-[11px]" style={{ color: 'rgba(241,240,255,0.35)' }}>
+                Chains pitch, speed &amp; tone smoothly across lines
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={contextChaining}
+                onChange={e => setContextChaining(e.target.checked)}
+                disabled={!isReady}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+            </label>
           </div>
 
           {/* Style Presets */}
