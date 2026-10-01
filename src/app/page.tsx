@@ -210,7 +210,6 @@ export default function Home() {
   const [selectedPreset, setSelectedPreset] = useState<string>('pure_clone');
   const [customStyle, setCustomStyle] = useState<string>('');
   const [speed, setSpeed]         = useState<Speed>('Normal');
-  const [contextChaining, setContextChaining] = useState<boolean>(true);
 
   // Pronunciation fix dictionary — localStorage as fast startup cache, VPS as source of truth
   const [replacePairs, setReplacePairs] = useState<ReplacePair[]>(() => {
@@ -399,12 +398,11 @@ export default function Home() {
     fd.append('text', text.trim());
     fd.append('reference_audio', refAudio);
     fd.append('quality', quality);
-    fd.append('style', 'Natural');
+    fd.append('style', selectedPreset);
     fd.append('custom_style', customStyle);
     fd.append('speed', speed);
     if (promptText.trim()) fd.append('prompt_text', promptText.trim());
     if (seed !== undefined && seed !== null) fd.append('seed', String(seed));
-    fd.append('context_chaining', String(contextChaining));
 
     try {
       // Step 1: Start generation — returns {job_id} immediately
@@ -710,28 +708,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Rolling Audio Continuation Toggle */}
-          <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider block"
-                style={{ color: 'rgba(241,240,255,0.7)' }}>
-                Rolling Continuation
-              </label>
-              <p className="text-[11px]" style={{ color: 'rgba(241,240,255,0.35)' }}>
-                Chains pitch, speed &amp; tone smoothly across lines
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={contextChaining}
-                onChange={e => setContextChaining(e.target.checked)}
-                disabled={!isReady}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-            </label>
-          </div>
+
 
           {/* Style Presets */}
           <div>
