@@ -70,6 +70,7 @@ export const STYLE_PRESETS: StylePreset[] = [
 
 const QUALITY_OPTIONS: Quality[] = ['Fast', 'Balanced', 'High Similarity'];
 const SPEED_OPTIONS: Speed[]     = ['Normal', 'Slower', 'Slowest'];
+const MAX_CHAR_LIMIT             = 3500;
 
 const GPU_COST_HR = 0.77; // RTX 6000 Ada — update if using different GPU
 
@@ -531,8 +532,9 @@ export default function Home() {
     };
   }, []);
 
-  const isReady    = gpuState === 'ready';
-  const canGenerate = isReady && !!text.trim() && !!refAudio && !generating;
+  const isReady       = gpuState === 'ready';
+  const isTextTooLong = text.length > MAX_CHAR_LIMIT;
+  const canGenerate   = isReady && !!text.trim() && !!refAudio && !generating && !isTextTooLong;
 
   return (
     <main className="relative z-10 min-h-screen p-6 md:p-10 max-w-5xl mx-auto">
@@ -807,11 +809,11 @@ export default function Home() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium" style={{ 
-                color: text.length > 5000 ? '#f59e0b' : text.length > 0 ? 'rgba(241,240,255,0.7)' : 'rgba(241,240,255,0.3)' 
+                color: isTextTooLong ? '#ef4444' : text.length > 2500 ? '#f59e0b' : text.length > 0 ? 'rgba(241,240,255,0.7)' : 'rgba(241,240,255,0.3)' 
               }}>
-                📝 {text.length} characters
+                📝 {text.length.toLocaleString()} / {MAX_CHAR_LIMIT.toLocaleString()} characters
                 {text.length > 0 && (
-                  <span className="ml-2 font-normal" style={{ color: 'rgba(241,240,255,0.4)' }}>
+                  <span className="ml-2 font-normal" style={{ color: isTextTooLong ? '#fca5a5' : 'rgba(241,240,255,0.4)' }}>
                     (approx. {Math.ceil(text.length / 250)} chunk{Math.ceil(text.length / 250) > 1 ? 's' : ''} · ~{Math.ceil(text.length / 15)}s audio)
                   </span>
                 )}
@@ -822,12 +824,22 @@ export default function Home() {
                 </span>
               )}
             </div>
-            {text.length > 5000 && (
+            {isTextTooLong && (
+              <div className="text-xs px-3 py-2 rounded-lg flex items-start gap-2" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                <span className="text-sm">⚠️</span>
+                <div>
+                  <p className="font-semibold text-white">Text exceeds limit by {(text.length - MAX_CHAR_LIMIT).toLocaleString()} characters</p>
+                  <p className="mt-0.5" style={{ color: '#fca5a5' }}>
+                    To ensure 100% stable generation and prevent GPU stalls or timeout loss, maximum allowed text per batch is {MAX_CHAR_LIMIT.toLocaleString()} characters (~14 chunks). Please split your script into smaller parts.
+                  </p>
+                </div>
+              </div>
+            )}
+            {!isTextTooLong && text.length > 2500 && (
               <p className="text-xs px-3 py-1.5 rounded" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                ℹ️ Long script ({text.length} chars) — will be processed smoothly across {Math.ceil(text.length / 250)} chunks.
+                ℹ️ Large script ({text.length} chars) — will be processed across {Math.ceil(text.length / 250)} chunks.
               </p>
             )}
-
           </div>
 
           {/* Quality */}
@@ -966,9 +978,10 @@ export default function Home() {
       <section className="mb-6">
         <button
           id="btn-generate"
-          className="btn btn-generate"
+          className={`btn btn-generate ${isTextTooLong ? 'opacity-60 cursor-not-allowed' : ''}`}
           onClick={generate}
           disabled={!canGenerate}
+          style={isTextTooLong ? { background: '#272738', borderColor: '#ef4444', color: '#fca5a5' } : undefined}
         >
           {generating ? (
             <span className="flex items-center gap-3">
@@ -978,6 +991,10 @@ export default function Home() {
                 : genProgress
                   ? `Generating… chunk ${genProgress.done}/${genProgress.total}`
                   : 'Generating cloned voice…'}
+            </span>
+          ) : isTextTooLong ? (
+            <span className="flex items-center gap-2">
+              ⚠️ Text Exceeds Limit ({text.length.toLocaleString()} / {MAX_CHAR_LIMIT.toLocaleString()}) — Split to Generate
             </span>
           ) : (
             <span className="flex items-center gap-2">
